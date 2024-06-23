@@ -1,0 +1,14 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/g/obj/Debug/net8.0/g.AssemblyInfo.cs
+/g/obj/Debug/net8.0/g.AssemblyInfoInputs.cache
+/g/obj/Debug/net8.0/g.assets.cache
+/g/obj/Debug/net8.0/g.GeneratedMSBuildEditorConfig.editorconfig
+/g/obj/g.csproj.nuget.dgspec.json
+/g/obj/project.assets.json
+/g/obj/project.nuget.cache
+/.vs/g/FileContentIndex/4b4e7b75-af4b-49ae-bbf2-16d233ff5676.vsidx
+*.vsidx
+/.vs/g/DesignTimeBuild/.dtbcache.v2
