@@ -31,6 +31,12 @@
         {
             StatsTracker.Reset();
             Player = BuildPlayer(true);
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.BanishmentSpellScroll));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.BanishmentSpellScroll));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ArmorShard));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ArmorShard));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.MediumHealthPotion));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.SmallHealthPotion));
             MoveToNewRoom();
         }
 
@@ -196,12 +202,18 @@
                         }
                         else
                         {
-                            if (TH.Menu("Choose an item to use: (using an item ends turn)", Player.GetItemsAsChoice(out eUsableItem[] itemsToChooseFrom), out int i))
+                            if (TH.Menu("Choose an item to use: (* ends turn)", Player.GetItemsAsChoice(out eUsableItem[] itemsToChooseFrom), out int i))
                             {
                                 PrintHud();
-                                Player.UseItem(itemsToChooseFrom[i]);
+                                eUsableItem chosenItem = itemsToChooseFrom[i];
+                                turnSpent = Player.UseItem(chosenItem, (ItemFactory.SelfUseItems.Contains(chosenItem) ? Player : CurrentRoom.Enemy));
+
+                                if (CurrentRoom.Enemy != null && CurrentRoom.Enemy.IsBanished)
+                                {
+                                    CurrentRoom.Enemy = null;
+                                }
+
                                 TH.WaitForEnter();
-                                turnSpent = true;
                             }
                         }
 
@@ -230,12 +242,12 @@
 
                 if (playerAction.WinAgainst == enemyAction.ActionType)
                 {
-                    TH.WriteL($"Your {playerAction.Name} beat the {currentEnemy.Name}'s {enemyAction.Name}, dealing {playerAction.PrintDamage()} damage!");
+                    TH.WriteL($"Your {playerAction.Name} beat the {currentEnemy.Name}'s {enemyAction.Name}, dealing {playerAction.PrintDamage()}!");
                     currentEnemy.TakeDamage(playerAction);
                 }
                 else if (playerAction.LoseAgainst == enemyAction.ActionType)
                 {
-                    TH.WriteL($"The {currentEnemy.Name}'s {enemyAction.Name} beat your {playerAction.Name}, dealing {enemyAction.PrintDamage()} damage.");
+                    TH.WriteL($"The {currentEnemy.Name}'s {enemyAction.Name} beat your {playerAction.Name}, dealing {enemyAction.PrintDamage()}.");
                     Player.TakeDamage(enemyAction);
                 }
                 else
@@ -250,8 +262,8 @@
                             break;
                         case eAction.Counter:
                             TH.WriteL($"As each opponent awaits an incoming attack, they fortify their defenses.");
-                            Player.AddArmor();
-                            currentEnemy.AddArmor();
+                            Player.AddCounterArmor();
+                            currentEnemy.AddCounterArmor();
                             break;
                         case eAction.Spell:
                             TH.WriteL($"The spells swirl together, creating an aura the buffs each opponent's next spell!");
@@ -270,15 +282,15 @@
             switch (attack.ActionType)
             {
                 case eAction.Strike:
-                    TH.WriteL($"While {otherCharacter.PerspectiveText("you", $"the {otherCharacter.Name}")} were unready, {attack.Owner.PerspectiveText("you", $"the {attack.Owner.Name}")} struck for {attack.PrintDamage()}");
+                    TH.WriteL($"While {otherCharacter.PerspectiveText("you", $"the {otherCharacter.Name}")} were unready, {attack.Owner.PerspectiveText("you", $"the {attack.Owner.Name}")} struck for {attack.PrintDamage()}.");
                     otherCharacter.TakeDamage(attack);
                     break;
                 case eAction.Counter:
                     TH.WriteL($"{attack.Owner.PerspectiveText("You", $"The {attack.Owner.Name}")} prepared for a strike that never came, fortifying {attack.Owner.PerspectiveText("your", $"their")} defense!");
-                    attack.Owner.AddArmor();
+                    attack.Owner.AddCounterArmor();
                     break;
                 case eAction.Spell:
-                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} spell uninterupted, dealing {attack.Damage} damage!");
+                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} spell uninterupted, dealing {attack.Damage}!");
                     otherCharacter.TakeDamage(attack);
                     break;
             }
@@ -305,7 +317,7 @@
                 if (Helper.RollDice(65) && enemy.CanAndShouldUseHealingItem(out eUsableItem item))
                 {
                     PrintHud();
-                    itemEndsTurn = enemy.UseItem(item);
+                    itemEndsTurn = enemy.UseItem(item, enemy);
                     TH.WaitForEnter();
                 }
             }
@@ -510,6 +522,7 @@
 
         public bool IsDead { get; set; } = false;
         public bool IsPlayer { get; set; } = false;
+        public bool IsBanished { get; set; } = false;
         public Dictionary<eUsableItem, List<ItemUsable>> UsableItems { get; private set; } = new() { };
 
         private List<CombatAction> _Actions = new();
@@ -561,27 +574,38 @@
             }
         }
 
-        public bool UseItem(eUsableItem item)
+        public bool UseItem(eUsableItem item, Character target)
         {
             bool usesTurn = false;
 
             if (UsableItems.ContainsKey(item))
             {
-                usesTurn = UsableItems[item][0].InstantUse;
-                UsableItems[item][0].Use(this);
+                usesTurn = !UsableItems[item][0].InstantUse;
+
+                if (!UsableItems[item][0].Use(this, target))
+                {
+                    usesTurn = false;
+                }
             }
 
             return usesTurn;
         }
 
-        public void AddArmor()
+        public void AddArmor(int armorToAdd)
         {
-            int armorToAdd = 1 + (Dexterity / 2);
-
             Armor += armorToAdd;
             TH.WriteL($"{PerspectiveText("You", $"The {Name}")} gained {armorToAdd} armor.");
         }
-        public void Heal(int healedPoints) => Health += (Health + healedPoints > MaxHealth) ? MaxHealth - Health : healedPoints;
+
+        public void AddCounterArmor() => AddArmor(1 + (Dexterity / 2));
+
+
+        public void Heal(int healedPoints)
+        {
+            healedPoints = (Health + healedPoints > MaxHealth) ? MaxHealth - Health : healedPoints;
+            Health += healedPoints;
+            TH.WriteL($"{PerspectiveText("You", $"The {Name}")} recovered {healedPoints} hp.");
+        }
         public void TakeDamage(CombatAction enemyAttack)
         {
             int dmg = enemyAttack.Damage;
@@ -672,6 +696,12 @@
             return String.IsNullOrEmpty(buffs) ? "None" : buffs;
         }
 
+        public void Banish()
+        {
+            TH.WriteL($"Suddenly the sky tears open above {PerspectiveText("you", $"the {Name}")} and, in a flash, dozens of arms reach out and grab {PerspectiveText("you, forcibly banishing you", "them, foricbly banishing them")} to the void. The tear seals as quickly as it appeared.");
+            IsBanished = true;
+        }
+
         public virtual void Death(Character otherChar) { }
     }
 
@@ -696,7 +726,7 @@
 
             foreach (KeyValuePair<eUsableItem, List<ItemUsable>> kvp in UsableItems)
             {
-                choices.Add($"({kvp.Value.Count}) {kvp.Value[0].Name} - {kvp.Value[0].Description}");
+                choices.Add($"{(kvp.Value[0].InstantUse ? "" : "*")}{kvp.Value[0].Name} [x{kvp.Value.Count}] - {kvp.Value[0].Description}");
                 itemChoices.Add(kvp.Key);
             }
 
@@ -857,7 +887,7 @@
         public string Name { get; set; }
         public string Description { get; set; }
         public eItemType ItemType { get; set; }
-        public abstract void Use(Character c);
+        public abstract bool Use(Character c, Character t);
     }
 
     //Usable Item
@@ -888,17 +918,44 @@
             };
         }
 
-        public override void Use(Character c)
+        public override bool Use(Character c, Character t)
         {
+            if (t == null)
+            {
+                TH.WriteL($"There's no enemy to use that item on.");
+                return false;
+            }
+            else if (t.IsDead)
+            {
+                TH.WriteL($"You can't use that item on a dead enemy.");
+                return false;
+            }
+            else if (t.Health == t.MaxHealth && ItemFactory.HealingItems.Contains(this.UsableItem))
+            {
+                TH.WriteL($"{t.PerspectiveText("You", $"The {t.Name}")} {t.PerspectiveText("are", "is")} already at full health.");
+                return false;
+            }
+
+            TH.WriteL($"{c.PerspectiveText("You", $"The {c.Name}")} used a {Name}.");
+
             switch (UsableItem)
             {
                 case eUsableItem.SmallHealthPotion:
-                    TH.WriteL($"{c.PerspectiveText("You", $"The {c.Name}")} used a {Name} to recover 2hp.");
-                    c.Heal(2);
+                    t.Heal(2);
+                    break;
+                case eUsableItem.MediumHealthPotion:
+                    t.Heal(4);
+                    break;
+                case eUsableItem.ArmorShard:
+                    t.AddArmor(2);
+                    break;
+                case eUsableItem.BanishmentSpellScroll:
+                    t.Banish();
                     break;
             }
 
             c.RemoveItem(this);
+            return true;
         }
     }
 
@@ -918,13 +975,18 @@
     public enum eUsableItem { SmallHealthPotion, MediumHealthPotion, ShopPortal, BanishmentSpellScroll, ArmorShard, Nothing }
     public static class ItemFactory
     {
+        public static eUsableItem[] SelfUseItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion, eUsableItem.ShopPortal, eUsableItem.ArmorShard];
+        public static eUsableItem[] HealingItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion];
+
         static List<ItemUsable> UsableItems = new List<ItemUsable>() {
             new(eUsableItem.SmallHealthPotion, "Herb", "Instantly Heals 2 HP.", true),
             new(eUsableItem.MediumHealthPotion, "Potion", "Heals 5 HP."),
             new(eUsableItem.ShopPortal, "Shop Portal", "Instantly teleports to a shop.", true),
-            new(eUsableItem.BanishmentSpellScroll, "Banishment Spell Scroll", "Instantly teleport an enemy to the void.", true),
+            new(eUsableItem.BanishmentSpellScroll, "Banishment Spell Scroll", "Instantly teleport an enemy to the void."),
             new(eUsableItem.ArmorShard, "Armor Shard", "Instantly grants 2 armor", true)
         };
+
+        public static ItemUsable CreateUsableItem(eUsableItem item) => UsableItems.FirstOrDefault(i => i.UsableItem == item)?.CreateCopy();
 
         public static List<ItemUsable> SpawnUsableItems(UsableItemSpawn[] spawns)
         {
@@ -966,7 +1028,6 @@
     //Text Handler
     public class TH
     {
-        //private static List<ConsoleKey> NumKeys = new() { ConsoleKey.NumPad1, ConsoleKey.NumPad2, ConsoleKey.NumPad3, ConsoleKey.NumPad4, ConsoleKey.NumPad5, ConsoleKey.NumPad6, ConsoleKey.NumPad7, ConsoleKey.NumPad8, ConsoleKey.NumPad9, ConsoleKey.NumPad0 };
         private static List<ConsoleKey> NumberKeys = new() { ConsoleKey.D1, ConsoleKey.D2, ConsoleKey.D3, ConsoleKey.D4, ConsoleKey.D5, ConsoleKey.D6, ConsoleKey.D7, ConsoleKey.D8, ConsoleKey.D9, ConsoleKey.D0 };
 
         public static string PromptAndGetTextAnswer(string question)
@@ -1060,8 +1121,8 @@
         {
             bool enterPressed = false;
 
-            Console.ForegroundColor = ConsoleColor.Black;
-            Console.BackgroundColor = ConsoleColor.White;
+            Console.ForegroundColor = ConsoleColor.Black; Console.BackgroundColor = ConsoleColor.White;
+
             Write("[Press Enter To Continue]", true);
             Console.CursorVisible = false;
             Console.ResetColor();
@@ -1076,11 +1137,9 @@
 
         public static void WaitForEnterStory(out bool skipCutscene)
         {
-            bool enterPressed = false;
-            skipCutscene = false;
+            bool enterPressed = false; skipCutscene = false;
+            Console.ForegroundColor = ConsoleColor.Black; Console.BackgroundColor = ConsoleColor.White;
 
-            Console.ForegroundColor = ConsoleColor.Black;
-            Console.BackgroundColor = ConsoleColor.White;
             Write("[Press Enter To Continue, Esc to Skip Story]", true);
             Console.CursorVisible = false;
             Console.ResetColor();
@@ -1104,6 +1163,7 @@
         public static int RoomsVisited { get; set; }
         public static int MonstersKilled { get; set; }
         public static int TotalGoldEarned { get; set; }
+        public static int TotalMonstersBanished { get; set; }
 
         public static void Reset()
         {
@@ -1115,7 +1175,7 @@
 
         public static void PrintFinalStats()
         {
-            TH.WriteL($"Final Stats:\n- Total Turns: {Turns}\n- Rooms Visited: {RoomsVisited}\n- Enemies Slain: {MonstersKilled}\n- Total Gold Earned: {TotalGoldEarned}");
+            TH.WriteL($"Final Stats:\n- Total Turns: {Turns}\n- Rooms Visited: {RoomsVisited}\n- Enemies Slain: {MonstersKilled}\n- Enemies Sent to the Void: {TotalMonstersBanished}\n- Total Gold Earned: {TotalGoldEarned}");
         }
     }
 }
