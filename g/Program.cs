@@ -18,12 +18,13 @@
         public static Player Player { get; set; }
         public static Room CurrentRoom { get; set; }
         public static void PrintHud()
-        {
+        { 
             TH.Clear();
             TH.WriteL($"+--------------------------------------------------------------------------------------------+\n" +
                 $" Current Room: {CurrentRoom.Name} | Turn {StatsTracker.Turns} | Total Enemies Slain: {StatsTracker.MonstersKilled}\n" +
                 $" Player: {Player.Name} | Health: {Player.PrintHealth()}| S/D/M: {Player.Strength}/{Player.Dexterity}/{Player.Magic} | Buffs: {Player.PrintBuffs()}\n" +
-                $"{((CurrentRoom.Enemy == null) ? " No enemies in this room.\n" : $" Enemy: {CurrentRoom.Enemy.Name} | Health: {CurrentRoom.Enemy.PrintHealth()} | S/D/M: {CurrentRoom.Enemy.Strength}/{CurrentRoom.Enemy.Dexterity}/{CurrentRoom.Enemy.Magic} | Buffs: {CurrentRoom.Enemy.PrintBuffs()}\n")}" +
+                $"{((CurrentRoom.Enemy == null) ? " You are alone in the room.\n" : $" {(CurrentRoom.Enemy.IsMerchant ? "Character" : "Enemy")}: {CurrentRoom.Enemy.Name} " +
+                $"| Health: {CurrentRoom.Enemy.PrintHealth()} | S/D/M: {CurrentRoom.Enemy.Strength}/{CurrentRoom.Enemy.Dexterity}/{CurrentRoom.Enemy.Magic} | Buffs: {CurrentRoom.Enemy.PrintBuffs()} {CurrentRoom.Enemy.PrintIntent(Player.CanSeeIntent())} \n")}" +
                 $"+--------------------------------------------------------------------------------------------+\n", true);
         }
 
@@ -32,11 +33,11 @@
             StatsTracker.Reset();
             Player = BuildPlayer(true);
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.BanishmentSpellScroll));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.BanishmentSpellScroll));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ArmorShard));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ArmorShard));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.MediumHealthPotion));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.SmallHealthPotion));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ShopPortal));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
+            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
             MoveToNewRoom();
         }
 
@@ -83,37 +84,27 @@
 
         private static void Play()
         {
-            StatsTracker.Turns++;
+            StatsTracker.Turns++; CombatAction enemyAction = null; eUsableItem enemyItem = eUsableItem.Nothing;
+            if (CurrentRoom.Enemy != null && !CurrentRoom.Enemy.IsDead && !Player.IsDead)
+            {
+                RollEnemyTurn(CurrentRoom.Enemy, out enemyAction, out enemyItem);
+            }
+
             PlayerTurn(out bool skipsEnemyTurn, out CombatAction playerAction);
 
             if (!skipsEnemyTurn && CurrentRoom.Enemy != null && !CurrentRoom.Enemy.IsDead && !Player.IsDead)
             {
-                EnemyTurn(CurrentRoom.Enemy, out CombatAction enemyAction);
+                if (enemyItem != eUsableItem.Nothing)
+                {
+                    PrintHud();
+                    CurrentRoom.Enemy.UseItem(enemyItem, CurrentRoom.Enemy);
+                    TH.WaitForEnter();
+                }
+
                 ResolveCombat(playerAction, enemyAction);
             }
-        }
 
-        private static void MoveToNewRoom()
-        {
-            Room prevRoom = CurrentRoom;
-            if (prevRoom == null)
-            {
-                CurrentRoom = RoomFactory.GetRandomRoom();
-            }
-            else
-            {
-                do
-                {
-                    CurrentRoom = RoomFactory.GetRandomRoom();
-                }
-                while (CurrentRoom.Name == prevRoom.Name);
-            }
-
-            StatsTracker.RoomsVisited++;
-            string rText = (prevRoom == null) ? $"You start your journey entering the portal for the first time. After stepping through it, you are now in a {CurrentRoom.Name}. " : $"You enter the portal, leaving the {prevRoom.Name} and have now entered what appears to be a {CurrentRoom.Name}. ";
-            rText += (CurrentRoom.Enemy == null) ? $"Thankfully there are no enemies and you're free to look around. " : $"In it, there's a single {CurrentRoom.Enemy.Name} staring at you aggressively infront of a glowing portal. ";
-            TH.WriteL(rText);
-            TH.WaitForEnter();
+            if (Player.SeesIntent) Player.SeesIntent = false;
         }
 
         private static void PlayerTurn(out bool skipsEnemyTurn, out CombatAction combatAction)
@@ -130,14 +121,36 @@
 
                 if (enemyPresent)
                 {
-                    choices.Add($"Combat");
-                    if (!CurrentRoom.ExhaustedSearch)
+                    if (CurrentRoom.Enemy.IsMerchant)
                     {
-                        choices.Add($"Search Room*");
-                    }
+                        if (CurrentRoom.Enemy.UsableItems.Count > 0)
+                        {
+                            choices.Add("Shop");
+                        }
 
-                    choices.Add("Inventory");
-                    choices.Add($"Escape Room* ({CurrentRoom.Enemy.EvasionChance}% Chance)");
+                        if (!CurrentRoom.Enemy.ExhaustedSearch) {
+                            choices.Add($"Steal From* ({Player.CalculateStealChance(CurrentRoom.Enemy)} % Chance)");
+                        }
+
+                        choices.Add($"Combat");
+                        choices.Add("Inventory");
+                        choices.Add($"Leave Room*");
+                    } else
+                    {
+                        choices.Add($"Combat");
+                        if (!CurrentRoom.Enemy.ExhaustedSearch)
+                        {
+                            choices.Add($"Steal From* ({Player.CalculateStealChance(CurrentRoom.Enemy)} % Chance)");
+                        }
+
+                        if (!CurrentRoom.ExhaustedSearch)
+                        {
+                            choices.Add($"Search Room*");
+                        }
+
+                        choices.Add("Inventory");
+                        choices.Add($"Escape Room* ({CurrentRoom.Enemy.EvasionChance}% Chance)");
+                    }
                 }
                 else
                 {
@@ -156,20 +169,63 @@
 
                 switch (choice.Split(' ')[0].Split('*')[0])
                 {
+                    case "Shop":
+
+                        if (TH.Menu($"Choose an item to buy (Available Gold: {Player.Gold}):", CurrentRoom.Enemy.GetItemsForSaleAsChoice(out eUsableItem[] itemChoices), out int selectedItem))
+                        {
+                            PrintHud();
+                            Player.TryBuyItem(itemChoices[selectedItem], CurrentRoom.Enemy);
+                            TH.WaitForEnter();
+                        }
+                        break;
+                    case "Steal":
+                        if (Helper.RollDice(Player.CalculateStealChance(CurrentRoom.Enemy)))
+                        {
+                            if (CurrentRoom.Enemy.UsableItems.Count <= 0)
+                            {
+                                TH.WriteL($"You were able to stealthily search the {CurrentRoom.Enemy.Name}'s belongings, unfortunately they had no items.");
+                                TH.WaitForEnter();
+                            } else
+                            {
+                                TH.WriteL($"Your guile allows you to quickly steal an item from the {CurrentRoom.Enemy.Name} {(CurrentRoom.Enemy.IsMerchant ? "without them noticing" : "") }!");
+                                TH.WaitForEnter();
+                                PrintHud();
+                                TH.Menu($"Choose an item to steal:", CurrentRoom.Enemy.GetItemsAsChoice(out eUsableItem[] stealingChoices), out int stolenItem, includeCancel: false);
+                                PrintHud();
+                                Player.StealItem(CurrentRoom.Enemy, stealingChoices[stolenItem]);
+                                TH.WaitForEnter();
+                            }
+
+                            CurrentRoom.Enemy.ExhaustedSearch = CurrentRoom.Enemy.UsableItems.Count <= 0;
+                        } else
+                        {
+                            TH.WriteL($"In an attempt to search the {CurrentRoom.Enemy.Name} for valuables, you slipped up and they caught you before you could get a good look at what they're carrying.");
+                            TH.WaitForEnter();
+                            if (CurrentRoom.Enemy.IsMerchant)
+                            {
+                                PrintHud();
+                                TH.WriteL($"The {CurrentRoom.Enemy.Name} looks at you with a dissapointed expression. They have lost trust in you as a buyer.");
+                                TH.WaitForEnter();
+                                PrintHud();
+                                TH.WriteL("You are now an enemy.");
+                                CurrentRoom.Enemy.IsMerchant = false;
+                            }
+                        }
+                        turnSpent = true;
+                        break;
+                        
                     case "Combat":
                         if (TH.Menu("Choose your action:", Player.GetActionsAsChoice(), out int a))
                         {
                             combatAction = Player.Actions[a];
                             turnSpent = true;
                         }
-
                         break;
                     case "Search":
                         if (CurrentRoom.TrySearch(out ItemUsable item))
                         {
                             Player.GiveUsableItem(item);
                         }
-
                         TH.WriteL((item == null) ? "After looking more, you realize there's no items left in the room." : $"You found a {item.Name}! You add it to your inventory.");
                         turnSpent = true;
                         TH.WaitForEnter();
@@ -183,6 +239,7 @@
                         if (Helper.RollDice(CurrentRoom.Enemy.EvasionChance))
                         {
                             TH.WriteL($"You were able dodge past the {CurrentRoom.Enemy.Name} and jump to portal to the next room.");
+                            TH.WaitForEnter();
                             skipsEnemyTurn = true;
                             MoveToNewRoom();
                         }
@@ -214,12 +271,42 @@
                                 }
 
                                 TH.WaitForEnter();
+
+                                if (chosenItem == eUsableItem.ShopPortal)
+                                {
+                                    PrintHud();
+                                    skipsEnemyTurn = true;
+                                    MoveToNewRoom(eRoom.Shop);
+                                    
+                                }
                             }
                         }
 
                         break;
                 }
             } while (!turnSpent);
+        }
+
+        private static void RollEnemyTurn(Enemy enemy, out CombatAction enemyAction, out eUsableItem item)
+        {
+            enemyAction = null; item = eUsableItem.Nothing;
+            bool itemEndsTurn = false;
+
+            
+            if (enemy.Health < enemy.MaxHealth && Helper.RollDice(65))
+            {
+                enemy.DetermineIfUseHeal(out item, out itemEndsTurn);
+            }
+
+            if (!enemy.IsMerchant)
+            {
+                enemyAction = (!itemEndsTurn) ? Helper.GetRandomItemFromArray(enemy.Actions.ToArray()) : null;
+            }
+
+            string itemIntent = (item != eUsableItem.Nothing) ? "i" : "";
+            string actionIntent = (enemyAction == null) ? "" : enemyAction.GetIntentSymbol();
+
+            enemy.Intent = itemIntent + (String.IsNullOrEmpty(itemIntent) ? "" : "=>") + actionIntent;
         }
 
         private static void ResolveCombat(CombatAction playerAction, CombatAction enemyAction)
@@ -290,10 +377,48 @@
                     attack.Owner.AddCounterArmor();
                     break;
                 case eAction.Spell:
-                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} spell uninterupted, dealing {attack.Damage}!");
+                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} spell uninterupted, dealing {attack.PrintDamage()}!");
                     otherCharacter.TakeDamage(attack);
                     break;
             }
+
+            if (!otherCharacter.IsDead && otherCharacter is Enemy e && e.IsMerchant)
+            {
+                TH.WriteL($"The {e.Name} looks at you with a dissapointed expression. They have lost trust in you as a buyer.");
+                TH.WaitForEnter();
+                PrintHud();
+                TH.WriteL("You are now an enemy.");
+                e.IsMerchant = false;
+            }
+        }
+
+        private static void MoveToNewRoom(eRoom roomToMoveTo = eRoom.Empty)
+        {
+            bool randomRoom = roomToMoveTo == eRoom.Empty;
+            Room prevRoom = CurrentRoom;
+            if (prevRoom == null)
+            {
+                CurrentRoom = (randomRoom) ? RoomFactory.GetRandomRoom() : RoomFactory.GetSpecificRoom(roomToMoveTo);
+            }
+            else if (!randomRoom)
+            {
+                CurrentRoom = RoomFactory.GetSpecificRoom(roomToMoveTo);
+            }
+            else
+            {
+                if (randomRoom)
+                {
+                    do
+                    {
+                        CurrentRoom = RoomFactory.GetRandomRoom();
+                    }
+                    while (CurrentRoom.Name == prevRoom.Name);
+                }
+            }
+
+            StatsTracker.RoomsVisited++;
+            TH.WriteL(CurrentRoom.RoomEnterText(prevRoom));
+            TH.WaitForEnter();
         }
 
         public enum eAbility
@@ -306,23 +431,6 @@
             // defensive
             Fortify, // reduce damage by 1 for two turns
             Regenerate, // heal 1 hp for two turns            
-        }
-
-        private static void EnemyTurn(Enemy enemy, out CombatAction enemyAction)
-        {
-            bool itemEndsTurn = false;
-
-            if (enemy.Health < enemy.MaxHealth)
-            {
-                if (Helper.RollDice(65) && enemy.CanAndShouldUseHealingItem(out eUsableItem item))
-                {
-                    PrintHud();
-                    itemEndsTurn = enemy.UseItem(item, enemy);
-                    TH.WaitForEnter();
-                }
-            }
-
-            enemyAction = (!itemEndsTurn) ? Helper.GetRandomItemFromArray(enemy.Actions.ToArray()) : null;
         }
 
         private static Player BuildPlayer(bool skipSetup = false)
@@ -418,6 +526,21 @@
             return damage;
         }
 
+        public string GetIntentSymbol()
+        {
+            switch (ActionType)
+            {
+                case eAction.Spell:
+                    return "M";
+                case eAction.Strike:
+                    return "S";
+                case eAction.Counter:
+                    return "D";
+            }
+
+            return "";
+        }
+
         public void ResolveBuffs()
         {
             if (ActionType == eAction.Spell && Owner.CombatBuffs.Contains(eCombatBuff.SpellDamage))
@@ -441,22 +564,26 @@
     //Room
     public class Room
     {
+        public eRoom eRoom { get; set; }
         public string Name { get; set; }
         public List<ItemUsable> Items { get; set; } = new();
         public Enemy Enemy { get; set; } = null;
         public int Gold { get; set; } = 0;
         public bool ExhaustedSearch { get; set; } = false;
+        public bool IsStore { get; set; }
 
         private UsableItemSpawn[] PossibleItems { get; set; } = [];
         private EnemySpawn[] PossibleEnemies { get; set; } = [];
         private int PossibleGold { get; set; }
 
-        public Room(string name = "", UsableItemSpawn[] possibleItems = null, EnemySpawn[] possibleEnemies = null, int possibleGold = 0)
+        public Room(string name = "", UsableItemSpawn[] possibleItems = null, EnemySpawn[] possibleEnemies = null, int possibleGold = 0, bool isRoom = false, eRoom room = eRoom.Empty)
         {
             Name = name;
             PossibleEnemies = possibleEnemies ?? PossibleEnemies;
             PossibleItems = possibleItems ?? PossibleItems;
             PossibleGold = possibleGold;
+            IsStore = false;
+            eRoom = room;
         }
 
         public Room BuildRoom() => new()
@@ -464,7 +591,9 @@
             Name = Name,
             Gold = Helper.GetRandomNumber(PossibleGold),
             Enemy = EnemyFactory.SpawnRandomEnemy(PossibleEnemies),
-            Items = ItemFactory.SpawnUsableItems(PossibleItems)
+            Items = ItemFactory.SpawnUsableItems(PossibleItems),
+            IsStore = IsStore,
+            eRoom = eRoom
         };
 
 
@@ -482,8 +611,27 @@
             Items.Remove(item);
             return true;
         }
+
+        public string RoomEnterText(Room prevRoom)
+        {
+            bool isFirstRoom = prevRoom == null;
+            string[] firstRoom = [$"You start your journey entering the portal for the first time. After stepping through it, you are now in a {Name}.", $"With a deep breath, you step through the portal. Suddenly you appear in a {Name}."];
+            string[] travelText = (isFirstRoom) ? [] : [$"You enter the portal, leaving the {prevRoom.Name} and have now entered what appears to be a {Name}.", 
+                $"Looking around the {prevRoom.Name} one last time, you step into the portal and are now in a {Name}.",
+                $"Ready to leave the {prevRoom.Name}, you quickly enter the portal to land in a {Name}.",
+                $"Without hesitation, you jump into the portal. After a flash of light you find yourself in a {Name}."
+                ];
+            string[] merchantText = (Enemy == null || !Enemy.IsMerchant) ? [] : [$" In it, there is a single merchant {(Enemy.UsableItems.Count > 0 ? "with some items for sale." : "who sadly has no items for sale. What kind of store is this?")}"];
+            string[] enemyText = (Enemy == null || Enemy.IsMerchant) ? [] : [$" In it, there is a single {Enemy.Name} infront of a portal, sizing you up, ready to fight.", $" Quickly you notice a {Enemy.Name} staring at you. They want to fight.", $" Instantly you make eye contact with the {Enemy.Name} blocking you from escape. You can sense their aggression.", $" The {Enemy.Name} in the room is pacing back and forth, as if they've been waiting to fight."];
+            string[] emptyText = [$" Thankfully there's nobody else in the {Name}, just the lit portal across the way.", $" Luckily you realize you're alone.", $" Fortunately, there's no enemies, granting you a bit of respite."];
+
+            string rText = (prevRoom == null) ? Helper.GetRandomItemFromArray(firstRoom) : Helper.GetRandomItemFromArray(travelText);
+            rText += (this.Enemy == null) ? Helper.GetRandomItemFromArray(emptyText) : (this.Enemy.IsMerchant) ? Helper.GetRandomItemFromArray(merchantText) : Helper.GetRandomItemFromArray(enemyText);
+            return rText;
+        }
     }
 
+    public enum eRoom { Empty, DarkAlleyway, DimlyLitCellar, ForestClearing, MushroomDwelling, CastleThroneRoom, Shop}
     public static class RoomFactory
     {
         static Room[] Rooms { get; set; } = [
@@ -502,9 +650,14 @@
             new(name: "Castle Throne Room",
                 possibleItems: [new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30)],
                 possibleEnemies: [new (eEnemy.PossessedSoldier, 40), new(eEnemy.MushroomKnight, 70)]),
+            new(name: "Shop", room: eRoom.Shop,
+                possibleEnemies:[new (eEnemy.Merchant, 100)],
+                possibleItems: [new(eUsableItem.BanishmentSpellScroll,10), new(eUsableItem.MediumHealthPotion,90), new(eUsableItem.ArmorShard,95), new(eUsableItem.ShopPortal,100)])
         ];
 
         public static Room GetRandomRoom() => Helper.GetRandomItemFromArray(Rooms).BuildRoom();
+
+        public static Room GetSpecificRoom(eRoom room) => Rooms.Where(r => r.eRoom == room).FirstOrDefault().BuildRoom();
     }
 
     //Character
@@ -589,6 +742,15 @@
             }
 
             return usesTurn;
+        }
+
+        public void StealItem(Character target, eUsableItem item)
+        {
+            ItemUsable stolenItem = target.UsableItems[item].FirstOrDefault();
+            target.RemoveItem(stolenItem);
+            GiveUsableItem(stolenItem);
+
+            TH.WriteL($"You slyly put the stolen {stolenItem.Name} in your inventory.");
         }
 
         public void AddArmor(int armorToAdd)
@@ -696,30 +858,6 @@
             return String.IsNullOrEmpty(buffs) ? "None" : buffs;
         }
 
-        public void Banish()
-        {
-            TH.WriteL($"Suddenly the sky tears open above {PerspectiveText("you", $"the {Name}")} and, in a flash, dozens of arms reach out and grab {PerspectiveText("you, forcibly banishing you", "them, foricbly banishing them")} to the void. The tear seals as quickly as it appeared.");
-            IsBanished = true;
-        }
-
-        public virtual void Death(Character otherChar) { }
-    }
-
-    //Player
-    public class Player : Character
-    {
-        public string[] GetActionsAsChoice()
-        {
-            List<string> choices = new List<string>();
-
-            foreach (CombatAction a in Actions)
-            {
-                choices.Add($"{a.Name}{(a.Damage > 0 ? "* " + a.PrintDamage() : "")}");
-            }
-
-            return choices.ToArray();
-        }
-
         public string[] GetItemsAsChoice(out eUsableItem[] itemsToChooseFrom)
         {
             List<string> choices = new(); List<eUsableItem> itemChoices = new();
@@ -733,6 +871,67 @@
             itemsToChooseFrom = itemChoices.ToArray();
             return choices.ToArray();
         }
+
+        public void Banish()
+        {
+            TH.WriteL($"Suddenly the sky tears open above {PerspectiveText("you", $"the {Name}")} and, in a flash, dozens of arms reach out and grab {PerspectiveText("you, forcibly banishing you", "them, foricbly banishing them")} to the void. The tear seals as quickly as it appeared.");
+            IsBanished = true;
+        }
+
+        public virtual void Death(Character otherChar) { }
+
+        public int CalculateStealChance(Character otherChar)
+        {
+            int stealChance = 20 + ((Dexterity - otherChar.Dexterity) * 5);
+            return stealChance < 0 ? 0 : stealChance > 100 ? 100 : stealChance;
+        }
+    }
+
+    //Player
+    public class Player : Character
+    {
+        public bool SeesIntent { get; set; } = false;
+        public bool CanSeeIntent()
+        {
+            return SeesIntent;
+        }
+
+        public string[] GetActionsAsChoice()
+        {
+            List<string> choices = new List<string>();
+
+            foreach (CombatAction a in Actions)
+            {
+                choices.Add($"{a.Name}{(a.Damage > 0 ? "* " + a.PrintDamage() : "")}");
+            }
+
+            return choices.ToArray();
+        }
+
+        public bool TryBuyItem(eUsableItem itemToBuy, Character merchant)
+        {
+            ItemUsable boughtItem = merchant.UsableItems[itemToBuy].FirstOrDefault();
+
+            if (Gold < boughtItem.BuyPrice)
+            {
+                TH.WriteL($"You cannot afford the {boughtItem.Name}.");
+                return false;
+            }
+
+            string[] mr = ["smiles briefly as you grab the item before looking back down at their book.", "utters a brief noise of what you percieve to be gratitude.",
+            "grabs your gold nonchalantly and nods as their attention doesn't leave the book they're invested in.", "glances up at you, \"Thanks, traveler.\"",
+            "stares at you blankly as you take the item. Is this... their way of trying to sell you on another item to buy?"];
+
+            merchant.RemoveItem(boughtItem);
+            GiveUsableItem(boughtItem);
+
+            merchant.Gold += boughtItem.BuyPrice;
+            Gold -= boughtItem.BuyPrice;
+
+            TH.WriteL($"You purchased the {boughtItem.Name} for {boughtItem.BuyPrice} gold. The {merchant.Name} {Helper.GetRandomItemFromArray(mr)}");
+
+            return true;
+        }
     }
 
     //ENEMY
@@ -742,10 +941,13 @@
         private UsableItemSpawn[] PossibleItems { get; set; } = [];
         private int PossibleGold { get; set; }
         public int EvasionChance { get; set; }
+        public bool IsMerchant { get; set; }
+        public string Intent { get; set; }
+        public bool ExhaustedSearch { get; set; }
 
         public Enemy() { }
         public Enemy(eEnemy enemy, string name = "", int health = 0, int possibleGold = 0, UsableItemSpawn[] possibleItems = null,
-                    List<CombatAction> actions = null, int evasionChance = 0, int strength = 1, int dexterity = 1, int magic = 1, int armor = 0)
+                    List<CombatAction> actions = null, int evasionChance = 0, int strength = 1, int dexterity = 1, int magic = 1, int armor = 0, bool isMerchant = false)
         {
             eEnemy = enemy;
             Name = name;
@@ -759,6 +961,7 @@
             Dexterity = dexterity;
             Magic = magic;
             Armor = armor;
+            IsMerchant = isMerchant;
         }
 
         public Enemy CreateCopy()
@@ -774,7 +977,8 @@
                 Strength = Strength,
                 Dexterity = Dexterity,
                 Magic = Magic,
-                Armor = Armor
+                Armor = Armor,
+                IsMerchant = IsMerchant,
             };
 
             e.GiveItems(ItemFactory.SpawnUsableItems(PossibleItems));
@@ -793,13 +997,13 @@
             }
         }
 
-        public bool CanAndShouldUseHealingItem(out eUsableItem item)
+        public bool DetermineIfUseHeal(out eUsableItem item, out bool endsTurn)
         {
-            item = eUsableItem.Nothing;
+            item = eUsableItem.Nothing; endsTurn = false;
 
             if (Health == MaxHealth)
             {
-                return true;
+                return false;
             }
 
             if (Health == 1)
@@ -807,33 +1011,56 @@
                 if (UsableItems.ContainsKey(eUsableItem.MediumHealthPotion))
                 {
                     item = eUsableItem.MediumHealthPotion;
-                    return true;
                 }
 
                 if (UsableItems.ContainsKey(eUsableItem.SmallHealthPotion))
                 {
                     item = eUsableItem.SmallHealthPotion;
-                    return true;
                 }
             }
 
             if (MaxHealth - Health <= 2 && UsableItems.ContainsKey(eUsableItem.SmallHealthPotion))
             {
                 item = eUsableItem.SmallHealthPotion;
-                return true;
             }
 
-            if (UsableItems.ContainsKey(eUsableItem.SmallHealthPotion) || UsableItems.ContainsKey(eUsableItem.MediumHealthPotion))
+            if (UsableItems.ContainsKey(eUsableItem.SmallHealthPotion) && UsableItems.ContainsKey(eUsableItem.MediumHealthPotion))
             {
                 item = Helper.GetRandomItemFromArray([eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion]);
+            }
+
+            item = (UsableItems.ContainsKey(eUsableItem.SmallHealthPotion)) ? eUsableItem.SmallHealthPotion : UsableItems.ContainsKey(eUsableItem.MediumHealthPotion) ? eUsableItem.MediumHealthPotion : eUsableItem.Nothing;
+
+            if (item != eUsableItem.Nothing)
+            {
+                endsTurn = !UsableItems[item].FirstOrDefault().InstantUse;
                 return true;
             }
 
             return false;
         }
+
+        public string[] GetItemsForSaleAsChoice(out eUsableItem[] itemsToChooseFrom)
+        {
+            List<string> choices = new(); List<eUsableItem> itemChoices = new();
+
+            foreach (KeyValuePair<eUsableItem, List<ItemUsable>> kvp in UsableItems)
+            {
+                choices.Add($"({kvp.Value[0].BuyPrice}g) {kvp.Value[0].Name} [x{kvp.Value.Count}] - {kvp.Value[0].Description}");
+                itemChoices.Add(kvp.Key);
+            }
+
+            itemsToChooseFrom = itemChoices.ToArray();
+            return choices.ToArray();
+        }
+
+        public string PrintIntent(bool canSeeIntent)
+        {
+            return  (IsDead || IsMerchant) ? "" : $"| Intent: [{(canSeeIntent ? Intent : "?")}]";
+        }
     }
 
-    public enum eEnemy { Goblin, Wolf, MushroomKnight, Skeleton, Bandit, PossessedSoldier }
+    public enum eEnemy { Goblin, Wolf, MushroomKnight, Skeleton, Bandit, PossessedSoldier, Merchant }
     public static class EnemyFactory
     {
         static List<Enemy> Enemies = new() {
@@ -854,6 +1081,9 @@
                 actions: ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell])),
             new(eEnemy.PossessedSoldier, name: "Possessed Soldier", health: 5, possibleGold: 200, evasionChance: 10, strength: 2, dexterity: 2, armor: 3,
                 possibleItems: [new(eUsableItem.SmallHealthPotion,30),new(eUsableItem.SmallHealthPotion,20), new (eUsableItem.SmallHealthPotion,10)],
+                actions: ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell])),
+            new(eEnemy.Merchant, name: "Merchant", health: 6, possibleGold: 600, evasionChance: 5, strength: 4, dexterity: 4, armor: 3, isMerchant:true,
+                possibleItems: ItemFactory.PossibleMerchantItems,
                 actions: ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell])),
         };
 
@@ -887,6 +1117,8 @@
         public string Name { get; set; }
         public string Description { get; set; }
         public eItemType ItemType { get; set; }
+        public int SellPrice { get; set; }
+        public int BuyPrice { get; set; }
         public abstract bool Use(Character c, Character t);
     }
 
@@ -897,24 +1129,28 @@
         public bool InstantUse { get; set; } = false;
         public ItemUsable() => ItemType = eItemType.Usable;
 
-        public ItemUsable(eUsableItem eUsableItem, string name, string description, bool instantUse = false)
+        public ItemUsable(eUsableItem eUsableItem, string name, string description, bool instantUse = false, int sellPrice = 0, int buyPrice = 0)
         {
             ItemType = eItemType.Usable;
             UsableItem = eUsableItem;
             Name = name;
             Description = description;
             InstantUse = instantUse;
+            BuyPrice = buyPrice;
+            SellPrice = sellPrice;
         }
 
         public ItemUsable CreateCopy()
         {
             return new ItemUsable()
             {
-                Name = this.Name,
-                Description = this.Description,
-                ItemType = this.ItemType,
-                UsableItem = this.UsableItem,
-                InstantUse = this.InstantUse
+                Name = Name,
+                Description = Description,
+                ItemType = ItemType,
+                UsableItem = UsableItem,
+                InstantUse = InstantUse,
+                BuyPrice = BuyPrice,
+                SellPrice = SellPrice
             };
         }
 
@@ -952,6 +1188,12 @@
                 case eUsableItem.BanishmentSpellScroll:
                     t.Banish();
                     break;
+                case eUsableItem.IntentPotion:
+                    if (t is Player p)
+                    {
+                        p.SeesIntent = true;
+                    }
+                    break;
             }
 
             c.RemoveItem(this);
@@ -972,18 +1214,26 @@
         }
     }
 
-    public enum eUsableItem { SmallHealthPotion, MediumHealthPotion, ShopPortal, BanishmentSpellScroll, ArmorShard, Nothing }
+    public enum eUsableItem { SmallHealthPotion, MediumHealthPotion, ShopPortal, BanishmentSpellScroll, ArmorShard, IntentPotion, Nothing }
     public static class ItemFactory
     {
-        public static eUsableItem[] SelfUseItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion, eUsableItem.ShopPortal, eUsableItem.ArmorShard];
+        public static eUsableItem[] SelfUseItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion, eUsableItem.ShopPortal, eUsableItem.ArmorShard, eUsableItem.IntentPotion];
         public static eUsableItem[] HealingItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion];
 
+        public static UsableItemSpawn[] PossibleMerchantItems = [
+            new(eUsableItem.BanishmentSpellScroll, 5), new(eUsableItem.ShopPortal,15),
+            new(eUsableItem.MediumHealthPotion, 50),new(eUsableItem.MediumHealthPotion, 50),new(eUsableItem.MediumHealthPotion, 50),
+            new(eUsableItem.ArmorShard, 50), new(eUsableItem.ArmorShard,50), new(eUsableItem.ArmorShard,50),
+            new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80)
+        ];
+
         static List<ItemUsable> UsableItems = new List<ItemUsable>() {
-            new(eUsableItem.SmallHealthPotion, "Herb", "Instantly Heals 2 HP.", true),
-            new(eUsableItem.MediumHealthPotion, "Potion", "Heals 5 HP."),
-            new(eUsableItem.ShopPortal, "Shop Portal", "Instantly teleports to a shop.", true),
-            new(eUsableItem.BanishmentSpellScroll, "Banishment Spell Scroll", "Instantly teleport an enemy to the void."),
-            new(eUsableItem.ArmorShard, "Armor Shard", "Instantly grants 2 armor", true)
+            new(eUsableItem.SmallHealthPotion, "Herb", "Instantly Heals 2 HP.", true, buyPrice: 30),
+            new(eUsableItem.MediumHealthPotion, "Potion", "Heals 5 HP.", buyPrice: 50),
+            new(eUsableItem.ShopPortal, "Shop Portal", "Instantly teleports to a shop.", true, buyPrice: 100),
+            new(eUsableItem.BanishmentSpellScroll, "Banishment Spell Scroll", "Instantly teleport an enemy to the void.", buyPrice: 250),
+            new(eUsableItem.ArmorShard, "Armor Shard", "Instantly grants 2 armor", true, buyPrice: 40),
+            new(eUsableItem.IntentPotion, "Potion of Intent", "Allows you to see an enemy's intent for the current turn.", true, buyPrice: 60)
         };
 
         public static ItemUsable CreateUsableItem(eUsableItem item) => UsableItems.FirstOrDefault(i => i.UsableItem == item)?.CreateCopy();
@@ -1029,7 +1279,7 @@
     public class TH
     {
         private static List<ConsoleKey> NumberKeys = new() { ConsoleKey.D1, ConsoleKey.D2, ConsoleKey.D3, ConsoleKey.D4, ConsoleKey.D5, ConsoleKey.D6, ConsoleKey.D7, ConsoleKey.D8, ConsoleKey.D9, ConsoleKey.D0 };
-
+        
         public static string PromptAndGetTextAnswer(string question)
         {
             WriteL($"{question}");

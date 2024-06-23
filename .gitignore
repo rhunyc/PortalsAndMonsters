@@ -12,3 +12,16 @@
 /.vs/g/FileContentIndex/4b4e7b75-af4b-49ae-bbf2-16d233ff5676.vsidx
 *.vsidx
 /.vs/g/DesignTimeBuild/.dtbcache.v2
+/.vs/g/v17/.suo
+/.vs/g/v17/DocumentLayout.json
+/g/bin/Debug/net8.0/g.dll
+/g/bin/Debug/net8.0/g.exe
+/g/bin/Debug/net8.0/g.pdb
+/g/obj/Debug/net8.0/ref/g.dll
+/g/obj/Debug/net8.0/refint/g.dll
+/g/obj/Debug/net8.0/apphost.exe
+/g/obj/Debug/net8.0/g.csproj.FileListAbsolute.txt
+/g/obj/Debug/net8.0/g.dll
+/g/obj/Debug/net8.0/g.genruntimeconfig.cache
+/g/obj/Debug/net8.0/g.pdb
+*.json
