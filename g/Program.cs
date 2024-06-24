@@ -18,7 +18,7 @@
         public static Player Player { get; set; }
         public static Room CurrentRoom { get; set; }
         public static void PrintHud()
-        { 
+        {
             TH.Clear();
             TH.WriteL($"+--------------------------------------------------------------------------------------------+\n" +
                 $" Current Room: {CurrentRoom.Name} | Turn {StatsTracker.Turns} | Total Enemies Slain: {StatsTracker.MonstersKilled}\n" +
@@ -31,12 +31,10 @@
         private static void Setup()
         {
             StatsTracker.Reset();
+            CurrentRoom = new Room() { ExhaustedSearch = true, IsStore = false, Name = "Locked Dungeon Cellar"};
             Player = BuildPlayer(true);
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.BanishmentSpellScroll));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.SmallHealthPotion));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ShopPortal));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
-            Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
             MoveToNewRoom();
         }
@@ -435,12 +433,13 @@
 
         private static Player BuildPlayer(bool skipSetup = false)
         {
+            Player p = new Player() { Health = 6, IsPlayer = true, MaxHealth = 6, Name = "Test Player", Strength = 1, Dexterity = 1, Magic = 1, Actions = ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell]) };
+
             if (skipSetup)
             {
-                return new Player() { Health = 6, IsPlayer = true, MaxHealth = 6, Name = "Test Player", Strength = 2, Dexterity = 2, Magic = 2, Actions = ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell]) };
+                return p;
             }
 
-            Player p = new Player() { Health = 6, IsPlayer = true, MaxHealth = 6 };
             p.Name = TH.PromptAndGetTextAnswer("Before we begin the game, what is your name?");
             TH.Clear();
             TH.WriteL($"Excellent, thank you for answering that {p.Name}");
@@ -634,18 +633,23 @@
     public enum eRoom { Empty, DarkAlleyway, DimlyLitCellar, ForestClearing, MushroomDwelling, CastleThroneRoom, Shop}
     public static class RoomFactory
     {
+        private static UsableItemSpawn[] StandardRoomDrops = [new(eUsableItem.SmallHealthPotion, 40), new(eUsableItem.SmallHealthPotion, 20), 
+                                                              new(eUsableItem.MediumHealthPotion, 10), new(eUsableItem.MediumHealthPotion, 5), 
+                                                              new(eUsableItem.ArmorShard,30), new(eUsableItem.ArmorShard,5),
+                                                              new(eUsableItem.BanishmentSpellScroll, 5), new(eUsableItem.ShopPortal, 10)];
+
         static Room[] Rooms { get; set; } = [
             new(name: "Dark Alleyway",
-                possibleItems: [new(eUsableItem.SmallHealthPotion,80), new(eUsableItem.SmallHealthPotion,20)],
+                possibleItems: StandardRoomDrops,
                 possibleEnemies: [new(eEnemy.Skeleton,10), new(eEnemy.Goblin, 90)]),
             new(name: "Dimly Lit Cellar",
-                possibleItems: [new(eUsableItem.SmallHealthPotion, 80), new(eUsableItem.SmallHealthPotion, 20)],
+                possibleItems: StandardRoomDrops,
                 possibleEnemies: [new(eEnemy.Wolf,30), new(eEnemy.Goblin,90)]),
             new(name: "Forest Clearing",
-                possibleItems: [new(eUsableItem.SmallHealthPotion, 80), new(eUsableItem.SmallHealthPotion, 40)],
+                possibleItems: StandardRoomDrops,
                 possibleEnemies: [new(eEnemy.Goblin, 10), new(eEnemy.MushroomKnight, 30), new(eEnemy.Wolf,80)]),
             new(name: "Mushroom Dwelling",
-                possibleItems: [new(eUsableItem.SmallHealthPotion, 80), new(eUsableItem.SmallHealthPotion, 40)],
+                possibleItems: StandardRoomDrops,
                 possibleEnemies: [new(eEnemy.MushroomKnight, 90)]),
             new(name: "Castle Throne Room",
                 possibleItems: [new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30)],
@@ -931,6 +935,22 @@
             TH.WriteL($"You purchased the {boughtItem.Name} for {boughtItem.BuyPrice} gold. The {merchant.Name} {Helper.GetRandomItemFromArray(mr)}");
 
             return true;
+        }
+
+        public void PromptSkillGain()
+        {
+            TH.Menu("Which stat would you like to increase by 1?", ["Strength", "Dexterity", "Magic"], out int c);
+            switch (c)
+            {
+                case 0:
+                    Strength++;
+                    TH.Write("You feel stronger.");
+                    break;
+                case 1:
+                    break;
+                case 2:
+                    break;
+            }
         }
     }
 
@@ -1292,17 +1312,17 @@
         {
             bool choiceMade = false;
             Console.CursorVisible = false;
-            WriteL(question);
+            WriteL(question,true);
             int check = (includeCancel) ? choices.Length : choices.Length - 1;
 
             for (int i = 0; i < choices.Length; i++)
             {
-                WriteL($"{i + 1}. {choices[i]}");
+                WriteL($"{i + 1}. {choices[i]}",true);
             }
 
             if (includeCancel)
             {
-                WriteL($"{choices.Length + 1}. Cancel");
+                WriteL($"{choices.Length + 1}. Cancel",true);
             }
 
             do
@@ -1352,7 +1372,7 @@
             foreach (var letter in text)
             {
                 Console.Write(letter);
-                if (!instantText) Thread.Sleep(10);
+                if (!instantText) Thread.Sleep(5);
             }
         }
 
