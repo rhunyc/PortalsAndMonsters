@@ -1,5 +1,7 @@
 ﻿namespace g
 {
+    // Last update: 6/28/2024 7:11 PM
+
     using System;
     using System.Collections.Generic;
     using System.Linq;
@@ -12,37 +14,186 @@
         }
     }
 
+    public static class GameEvents
+    {
+        public static event Action OnPlayerSkillGain;
+        public static void RaisePlayerSkillGain() => OnPlayerSkillGain?.Invoke();
+    }
+
     // Game
     public static class Game
     {
-        public static Player Player { get; set; }
+        public static Player Player { get; set; } = new Player();
         public static Room CurrentRoom { get; set; }
+
+        public static void PrintTitle()
+        {
+            string text = $"\n\n\t{TH.SetColor(Colors.DarkCyan)} _______  _______  _______ _________ _______  _        _______  {TH.SetColor()}    __     \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}(  ____ )(  ___  )(  ____ )\\__   __/(  ___  )( \\      (  ____ \\{TH.SetColor()}    /__\\    \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}| (    )|| (   ) || (    )|   ) (   | (   ) || (      | (    \\/{TH.SetColor()}   ( \\/ )   \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}| (____)|| |   | || (____)|   | |   | (___) || |      | (_____ {TH.SetColor()}    \\  /    \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}|  _____)| |   | ||     __)   | |   |  ___  || |      (_____  ) {TH.SetColor()}   /  \\/\\  \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}| (      | |   | || (\\ (      | |   | (   ) || |            ) | {TH.SetColor()}  / /\\  /  \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}| )      | (___) || ) \\ \\__   | |   | )   ( || (____/\\/\\____) |{TH.SetColor()}  (  \\/  \\  \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkCyan)}|/       (_______)|/   \\__/   )_(   |/     \\|(_______/\\_______) {TH.SetColor()}  \\___/\\/  \r\n" +
+                            $"\t{TH.SetColor(Colors.DarkRed)} _______  _______  _        _______ _________ _______  _______  _______    \r\n" +
+                            $"\t(       )(  ___  )( (    /|(  ____ \\\\__   __/(  ____ \\(  ____ )(  ____ \\   \r\n" +
+                            $"\t| () () || (   ) ||  \\  ( || (    \\/   ) (   | (    \\/| (    )|| (    \\/   \r\n" +
+                            $"\t| || || || |   | ||   \\ | || (_____    | |   | (__    | (____)|| (_____    \r\n" +
+                            $"\t| |(_)| || |   | || (\\ \\) |(_____  )   | |   |  __)   |     __)(_____  )   \r\n" +
+                            $"\t| |   | || |   | || | \\   |      ) |   | |   | (      | (\\ (         ) |   \r\n" +
+                            $"\t| )   ( || (___) || )  \\  |/\\____) |   | |   | (____/\\| ) \\ \\__/\\____) |   \r\n" +
+                            $"\t|/     \\|(_______)|/    )_)\\_______)   )_(   (_______/|/   \\__/\\_______)   \r\n                                                                           \n";
+            TH.WriteL($"{text}{TH.SetColor()}", true);
+        }
+
         public static void PrintHud()
         {
             TH.Clear();
+            string playerText = (Player == null) ? "" : $" Player Name: {Player.Name} | Health: {Player.PrintHealth()} | {Player.PrintStats()} | Buffs: {Player.PrintBuffs()} | Gold: {TH.SetColor(Colors.Yellow)}{Player.Gold}g{TH.SetColor()}\n";
+
             TH.WriteL($"+--------------------------------------------------------------------------------------------+\n" +
-                $" Current Room: {CurrentRoom.Name} | Turn {StatsTracker.Turns} | Total Enemies Slain: {StatsTracker.MonstersKilled}\n" +
-                $" Player: {Player.Name} | Health: {Player.PrintHealth()}| S/D/M: {Player.Strength}/{Player.Dexterity}/{Player.Magic} | Buffs: {Player.PrintBuffs()}\n" +
-                $"{((CurrentRoom.Enemy == null) ? " You are alone in the room.\n" : $" {(CurrentRoom.Enemy.IsMerchant ? "Character" : "Enemy")}: {CurrentRoom.Enemy.Name} " +
-                $"| Health: {CurrentRoom.Enemy.PrintHealth()} | S/D/M: {CurrentRoom.Enemy.Strength}/{CurrentRoom.Enemy.Dexterity}/{CurrentRoom.Enemy.Magic} | Buffs: {CurrentRoom.Enemy.PrintBuffs()} {CurrentRoom.Enemy.PrintIntent(Player.CanSeeIntent())} \n")}" +
+                $" Current Room: {CurrentRoom.Name} | Turn {StatsTracker.Turns} | Total Enemies Slain: {StatsTracker.Victims.Count}\n" +
+                $"{playerText}" +
+                $"{((CurrentRoom.Enemy == null) ? " You are alone in the room.\n" :
+                $"{(CurrentRoom.Enemy.IsMerchant ? $" Character: {CurrentRoom.Enemy.Name}" : $" Enemy: {CurrentRoom.Enemy.Name}")}" +
+                $"| Health: {CurrentRoom.Enemy.PrintHealth()} | {CurrentRoom.Enemy.PrintStats()} | Buffs: {CurrentRoom.Enemy.PrintBuffs()} {CurrentRoom.Enemy.PrintIntent(Player.CanSeeIntent())} \n")}" +
                 $"+--------------------------------------------------------------------------------------------+\n", true);
         }
 
         private static void Setup()
         {
+            GameEvents.OnPlayerSkillGain += HandlePLayerSkillGain;
             StatsTracker.Reset();
-            CurrentRoom = new Room() { ExhaustedSearch = true, IsStore = false, Name = "Locked Dungeon Cellar"};
-            Player = BuildPlayer(true);
+            PrintTitle();
+            TH.Menu("Do you want to skip the intro?", ["Yes", "No"], out int skipIntro, includeCancel: false, true);
+
+            if (skipIntro == 1)
+            {
+                WriteIntro();
+            }
+
+
+            CurrentRoom = new Room() { ExhaustedSearch = true, IsStore = false, Name = "Locked Dungeon Cell" };
+            BuildPlayer(false);
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.SmallHealthPotion));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.ShopPortal));
             Player.GiveUsableItem(ItemFactory.CreateUsableItem(eUsableItem.IntentPotion));
+
             MoveToNewRoom();
         }
 
         public static void Start()
         {
             Console.ResetColor();
+            PrintTitle();
+            TH.WriteL("\n\n\t\tA small prototype by r\n\n", true);
+            TH.Write("\t\t");
+            TH.WaitAndClear("[Press Enter To Start]");
+            int choice = -1;
+            do
+            {
+                PrintTitle();
+                TH.Menu("Main Menu:", ["Play", "How To Play", "About", "Exit"], out choice, false, true);
+                switch (choice)
+                {
+                    case 0:
+                        PlayGame();
+                        break;
+                    case 1:
+                        HowToPlay();
+                        break;
+                    case 2:
+                        About();
+                        break;
+                    case 3:
+                        break;
+                }
+            } while (choice != 3);
 
+
+            TH.WriteL("Thank you for playing! Press Any Key to exit the game.");
+            Console.ReadKey();
+        }
+
+        public static void HowToPlay()
+        {
+            string header = $"{TH.SetColor(Colors.DarkCyan)}\t          _______            _________ _______    _______  _        _______          \r\n" +
+                                                             $"\t|\\     /|(  ___  )|\\     /|  \\__   __/(  ___  )  (  ____ )( \\      (  ___  )|\\     /|\r\n" +
+                                                             $"\t| )   ( || (   ) || )   ( |     ) (   | (   ) |  | (    )|| (      | (   ) |( \\   / )\r\n" +
+                                                             $"\t| (___) || |   | || | _ | |     | |   | |   | |  | (____)|| |      | (___) | \\ (_) / \r\n" +
+                                                             $"\t|  ___  || |   | || |( )| |     | |   | |   | |  |  _____)| |      |  ___  |  \\   /  \r\n" +
+                                                             $"\t| (   ) || |   | || || || |     | |   | |   | |  | (      | |      | (   ) |   ) (   \r\n" +
+                                                             $"\t| )   ( || (___) || () () |     | |   | (___) |  | )      | (____/\\| )   ( |   | |   \r\n" +
+                                                             $"\t|/     \\|(_______)(_______)     )_(   (_______)  |/       (_______/|/     \\|   \\_/   {TH.SetColor()}";
+            TH.WriteL($"{header}\n\n", true);
+            TH.WriteL($"{TH.CT(Colors.DarkCyan, $"Portals")} & {TH.CT(Colors.DarkRed, "Monsters")} is a simple roguelike in which you are pitted in 1-on-1 turn-based combat against\n" +
+                      $"an army of never-ending {TH.CT(Colors.DarkRed, "foes")}. Each room is an enclosed arena, guaranteed to have a {TH.CT(Colors.DarkCyan, "portal")} to an\n" +
+                      "unknown destination. Where will you end up?\n\n" +
+                      $"The main gameplay is based around Rock Paper Scissors, but instead called \"{TH.CT(Colors.Red, "Strike")}\", \"{TH.CT(Colors.Green, "Counter")}\" and \"{TH.CT(Colors.Blue, "Spell")}\".\n\n\n" +
+                      $"{TH.CT(Colors.Red, "Strike")} beats {TH.CT(Colors.Blue, "spell")} - {TH.CT(Colors.Red, "Strike")} is quick and can hit someone slowly casting their {TH.CT(Colors.Blue, "spell")}.\n\n" +
+                      $"{TH.CT(Colors.Green, "Counter")} beats {TH.CT(Colors.Red, "strike")} - Preparing for a {TH.CT(Colors.Red, "strike")}, you can react accordingly and {TH.CT(Colors.Green, "punish")} their attack.\n\n" +
+                      $"{TH.CT(Colors.Blue, "Spell")} beats {TH.CT(Colors.Green, "counter")} - Those who are {TH.CT(Colors.Green, "waiting to counter")} allow the opposing caster time to cast their {TH.CT(Colors.Blue, "spell")}.\n\n");
+            TH.WaitAndClear();
+
+            TH.WriteL($"{header}\n\n", true);
+            TH.WriteL("The game has some additional interesting mechanics. For instance when players tie on a choice:\n\n" +
+                $"{TH.CT(Colors.Red, "Strike")} - If both opponents {TH.CT(Colors.Red, "strike")} at the same time, they {TH.CT(Colors.Red, "clash")}, and the respective damage of both blows is\n\t added up and dealt to each player.\n\n" +
+                $"{TH.CT(Colors.Green, "Counter")} - If each opponent {TH.CT(Colors.Green, "counters")}, they {TH.CT(Colors.Green, "bolster")} their defenses by the amount of Dexterity they have.\n\n" +
+                $"{TH.CT(Colors.Blue, "Spell")} - When both opponenets cast a {TH.CT(Colors.Blue, "spell")}, the magic attacks {TH.CT(Colors.Blue, "swirl together")}, eminating a stackable aura \n\tthat increases the damage of the next successful spell for each character by 1.\n\n");
+            TH.WaitAndClear();
+
+            TH.WriteL($"{header}\n\n", true);
+            TH.WriteL("Here are some helpful things to know about the in-game displays.\n\n" +
+                $"Characters have fixed health as shown like so: ({TH.CT(Colors.Red, "♥")})({TH.CT(Colors.Red, "♥")})( ).\nThis means the character has 3 HP total and has taken 1 point of damage.\n\n" +
+                $"If a character has armor it will look like this: ({TH.CT(Colors.Red, "♥")})({TH.CT(Colors.Red, "♥")})( )[{TH.CT(Colors.Cyan, "+")}][{TH.CT(Colors.Cyan, "+")}].\nThis means the character has 2 points of {TH.CT(Colors.Cyan, "armor")}.\n\n" +
+                $"{TH.CT(Colors.Cyan, "Armor")} is temporary additional HP that there is no limit on. When taking damage, {TH.CT(Colors.Cyan, "armor")} is used before HP.\n" +
+                $"If a character has 2 {TH.CT(Colors.Cyan, "armor")} and takes 3 damage, they will lose all {TH.CT(Colors.Cyan, "armor")} and recieve 1 damage to their \navailable HP.\n\n" +
+                $"For each character you will see a \"S/D/M:\" followed by numbers like so \"{TH.CT(Colors.Red, "1")}/{TH.CT(Colors.Green, "1")}/{TH.CT(Colors.Blue, "1")}\".\nThis stands for {TH.CT(Colors.Red, "Strength")}/{TH.CT(Colors.Green, "Dexterity")}/{TH.CT(Colors.Blue, "Magic")} and represents the amount of damage those attacks do.\n\n" +
+                $"You will also see a \"Buffs: []\". When a character has a buff, it will show in the [], like this: [{TH.CT(Colors.Blue, "$")}].\nIf they have a stackable buff, it'll show something like [$x2].\n" +
+                $"\nCurrently there is only one buff in the game, but if more are added, they will appear in this list:\n" +
+                $"- {TH.CT(Colors.Blue, "$")} = {TH.CT(Colors.Blue, "Spell")} damage (from both players casting a {TH.CT(Colors.Blue, "spell")})\n\n");
+            TH.WaitAndClear();
+
+            TH.WriteL($"{header}\n\n", true);
+            TH.WriteL($"You will also see an \"Intent: [?]\" next to the {TH.CT(Colors.DarkRed, "enemy")}. There's an item that lets you view what\nthey plan to do for their turn.\n\n" +
+                $"If you use it, it'll show something like this [i->{TH.CT(Colors.Blue, "M")}].\nThis means the enemy is planning on using an item and then using their {TH.CT(Colors.Blue, "magic")} combat ability ({TH.CT(Colors.Blue, "spell")}).\n\n" +
+                $"{TH.CT(Colors.Red, "S = Strength (Strike)")}, {TH.CT(Colors.Green, "D = Dexterity (Counter)")}, {TH.CT(Colors.Blue, "M = Magic (Spell)")}, i = Item\n\n" +
+                "And like in the example above, if you see i=>, that means they're using an item into an ability.\n\nIf it's just i, then they're planning on only using an item that will end their turn.\n\n");
+            TH.WaitAndClear();
+
+            TH.WriteL($"{header}\n\n", true);
+            TH.WriteL($"The last thing to mention is there is no ending. The game will continue on until you lose!\n\n" +
+                $"Every 5 enemies you slay, you will gain a stat point to assign to either {TH.CT(Colors.Red, "Strength")}, {TH.CT(Colors.Green, "Dexterity")}, or {TH.CT(Colors.Blue, "Magic")}.\n\n" +
+                "I think that's it for the basics! If you have any additional questions, reach out! I hope you enjoy the game.\n\n");
+            TH.WaitAndClear("[Press Enter To Go Back To Main Menu]");
+        }
+
+        public static void About()
+        {
+            string header = $"{TH.SetColor(Colors.DarkCyan)}\t _______  ______   _______          _________\r\n" +
+                                                             $"\t(  ___  )(  ___ \\ (  ___  )|\\     /|\\__   __/\r\n" +
+                                                             $"\t| (   ) || (   ) )| (   ) || )   ( |   ) (   \r\n" +
+                                                             $"\t| (___) || (__/ / | |   | || |   | |   | |   \r\n" +
+                                                             $"\t|  ___  ||  __ (  | |   | || |   | |   | |   \r\n" +
+                                                             $"\t| (   ) || (  \\ \\ | |   | || |   | |   | |   \r\n" +
+                                                             $"\t| )   ( || )___) )| (___) || (___) |   | |   \r\n" +
+                                                             $"\t|/     \\||/ \\___/ (_______)(_______)   )_(   \r\n                                             ";
+
+            TH.WriteL($"{header}{TH.SetColor()}\n\n", true);
+            TH.WriteL("This is a simple game prototype built by r (rhunyc) in a single Program.cs file.\n\n" +
+                "The intent with this, if it proves to be a fun enough concept, is to port it into a game engine with graphics \nand sound.\n\n" +
+                "One thing to note is that is VERY rough around the edges and most definitely NOT balanced (aside from my rough\n pass at it).\n\n" +
+                "Expect weird grammar and the occasional typo. It is not meant to be a polished or relatively finished game.\n\n" +
+                "Just a small bite-sized thing to get the idea across. :) \n\n" +
+                "There is room for a lot of additional content like more enemies, abilities, items, rooms, and gameplay mechanics.\n" +
+                "I think it could be fun to add some sense of progression, like unlocks and an end goal. Something like fighting \nbosses and trying to make it to an end point of some sort.\n\n" +
+                "Anyways, thanks for checking it out. Please share any feedback, good or bad. :)\n\n(Headers and title generated with: https://patorjk.com/software/taag/)\n");
+            TH.WaitAndClear("[Press Enter To Go Back To Main Menu]");
+        }
+
+        public static void PlayGame()
+        {
             int restart = 0;
             do
             {
@@ -57,27 +208,59 @@
                 TH.Menu("\nWould you like to restart?", ["Yes", "No"], out restart, includeCancel: false);
             }
             while (restart == 0);
-
-            TH.WriteL("Thank you for playing! Press Any Key to exit the game.");
-            Console.ReadKey();
         }
 
         private static void WriteIntro()
         {
             TH.WriteStoryText([
-                "You wake up from what feels like the hardest sleep of your life.",
-                "Rubbing your eyes, you can't help but to notice what appears to be a dimly lit portal, swirling with all kinds of energy.",
-                "You think to yourself \"This can't be real... I must be asleep. This has to be a dream.\"",
-                $"Looking around more, you see a table with a note on it.",
-                "You get up to read the note... It says:",
-                "\"Greetings.. Unfortunately you're trapped in a vicious cycle.\"",
-                "\"You must travel from portal to portal, in a series of unforseen locations.\"",
-                "\"I've done my best to free you, but unfortunately this is the best I can do...\"",
-                "\"There only path forward is through the portals. I don't know what lies on the other side.\"",
-                "\"I pray you find respite.\"",
-                "Dropping the letter, you feel a sense of dread start to well up in your chest.",
-                $"The only path is forward... so you approach the portal."
+                "You wake up from what feels like the hardest sleep of your life.\n",
+                $"Rubbing your eyes, you can't help but to notice what appears to be a {TH.CT(Colors.DarkCyan,"dimly lit portal")}, swirling with \nall kinds of energy.\n",
+                "You think to yourself \"This can't be real... I must be asleep. This has to be a dream.\"\n",
+                $"Looking around more as you snap out of your grogginess, you realize you are in a locked dungeon cell. You see a \ntable with a note on it.\n",
+                "You get up to read the note... It says:\n",
+                "\"Greetings.. Unfortunately you're trapped in a vicious cycle.\"\n",
+                "\"You must travel from portal to portal, in a series of unforseen locations.\"\n",
+                "\"I've done my best to free you from your existing circumstances, but unfortunately this is the best I can do...\"\n",
+                "\"The only path forward is through the portals. I don't know what lies on the other side.\"\n",
+                "\"I pray you find respite. -b\"\n",
+                "Dropping the letter, you feel a sense of dread start to well up in your chest.\n",
+                $"With a heavy sigh, you start stepping towards the portal..\n"
             ]);
+        }
+
+
+        public static void HandlePLayerSkillGain()
+        {
+            if (!Player.IsDead)
+            {
+                TH.Clear();
+                PrintHud();
+                TH.WriteL("You've defeated 5 enemies, gaining a skill point!");
+                TH.WaitAndClear();
+                PrintHud();
+                PlayerSkillGain(true);
+            }
+        }
+        private static void PlayerSkillGain(bool isInGame = false)
+        {
+            TH.Menu("Which stat would you like to increase by 1?", [$"{TH.CT(Colors.Red, "Strength")}", $"{TH.CT(Colors.Green, "Dexterity")}", $"{TH.CT(Colors.Blue, "Magic")}"], out int c, false);
+            if (isInGame) { PrintHud(); }
+            switch (c)
+            {
+                case 0:
+                    Player.Strength++;
+                    TH.WriteL($"You feel {TH.SetColor(Colors.Red)}stronger{TH.SetColor()}.");
+                    break;
+                case 1:
+                    Player.Dexterity++;
+                    TH.WriteL($"You feel {TH.SetColor(Colors.Green)}quicker{TH.SetColor()}.");
+                    break;
+                case 2:
+                    Player.Magic++;
+                    TH.WriteL($"Your {TH.SetColor(Colors.Blue)}magical aura grows{TH.SetColor()}.");
+                    break;
+            }
+            TH.WaitAndClear();
         }
 
         private static void Play()
@@ -126,19 +309,21 @@
                             choices.Add("Shop");
                         }
 
-                        if (!CurrentRoom.Enemy.ExhaustedSearch) {
+                        if (!CurrentRoom.Enemy.ExhaustedSearch)
+                        {
                             choices.Add($"Steal From* ({Player.CalculateStealChance(CurrentRoom.Enemy)} % Chance)");
                         }
 
                         choices.Add($"Combat");
                         choices.Add("Inventory");
                         choices.Add($"Leave Room*");
-                    } else
+                    }
+                    else
                     {
                         choices.Add($"Combat");
                         if (!CurrentRoom.Enemy.ExhaustedSearch)
                         {
-                            choices.Add($"Steal From* ({Player.CalculateStealChance(CurrentRoom.Enemy)} % Chance)");
+                            choices.Add($"Steal From* ({Player.CalculateStealChance(CurrentRoom.Enemy)}% Chance)");
                         }
 
                         if (!CurrentRoom.ExhaustedSearch)
@@ -169,7 +354,7 @@
                 {
                     case "Shop":
 
-                        if (TH.Menu($"Choose an item to buy (Available Gold: {Player.Gold}):", CurrentRoom.Enemy.GetItemsForSaleAsChoice(out eUsableItem[] itemChoices), out int selectedItem))
+                        if (TH.Menu($"Choose an item to buy ({TH.CT(Colors.Yellow, $"Available Gold: {Player.Gold}")}:", CurrentRoom.Enemy.GetItemsForSaleAsChoice(out eUsableItem[] itemChoices), out int selectedItem))
                         {
                             PrintHud();
                             Player.TryBuyItem(itemChoices[selectedItem], CurrentRoom.Enemy);
@@ -183,9 +368,10 @@
                             {
                                 TH.WriteL($"You were able to stealthily search the {CurrentRoom.Enemy.Name}'s belongings, unfortunately they had no items.");
                                 TH.WaitForEnter();
-                            } else
+                            }
+                            else
                             {
-                                TH.WriteL($"Your guile allows you to quickly steal an item from the {CurrentRoom.Enemy.Name} {(CurrentRoom.Enemy.IsMerchant ? "without them noticing" : "") }!");
+                                TH.WriteL($"Your guile allows you to quickly steal an item from the {CurrentRoom.Enemy.Name} {(CurrentRoom.Enemy.IsMerchant ? "without them noticing" : "")}!");
                                 TH.WaitForEnter();
                                 PrintHud();
                                 TH.Menu($"Choose an item to steal:", CurrentRoom.Enemy.GetItemsAsChoice(out eUsableItem[] stealingChoices), out int stolenItem, includeCancel: false);
@@ -195,7 +381,8 @@
                             }
 
                             CurrentRoom.Enemy.ExhaustedSearch = CurrentRoom.Enemy.UsableItems.Count <= 0;
-                        } else
+                        }
+                        else
                         {
                             TH.WriteL($"In an attempt to search the {CurrentRoom.Enemy.Name} for valuables, you slipped up and they caught you before you could get a good look at what they're carrying.");
                             TH.WaitForEnter();
@@ -211,7 +398,7 @@
                         }
                         turnSpent = true;
                         break;
-                        
+
                     case "Combat":
                         if (TH.Menu("Choose your action:", Player.GetActionsAsChoice(), out int a))
                         {
@@ -275,7 +462,7 @@
                                     PrintHud();
                                     skipsEnemyTurn = true;
                                     MoveToNewRoom(eRoom.Shop);
-                                    
+
                                 }
                             }
                         }
@@ -290,7 +477,7 @@
             enemyAction = null; item = eUsableItem.Nothing;
             bool itemEndsTurn = false;
 
-            
+
             if (enemy.Health < enemy.MaxHealth && Helper.RollDice(65))
             {
                 enemy.DetermineIfUseHeal(out item, out itemEndsTurn);
@@ -328,11 +515,13 @@
                 if (playerAction.WinAgainst == enemyAction.ActionType)
                 {
                     TH.WriteL($"Your {playerAction.Name} beat the {currentEnemy.Name}'s {enemyAction.Name}, dealing {playerAction.PrintDamage()}!");
+                    TH.WaitAndClear();
                     currentEnemy.TakeDamage(playerAction);
                 }
                 else if (playerAction.LoseAgainst == enemyAction.ActionType)
                 {
                     TH.WriteL($"The {currentEnemy.Name}'s {enemyAction.Name} beat your {playerAction.Name}, dealing {enemyAction.PrintDamage()}.");
+                    TH.WaitAndClear();
                     Player.TakeDamage(enemyAction);
                 }
                 else
@@ -341,25 +530,28 @@
                     {
                         case eAction.Strike:
                             int totalDamage = playerAction.Damage + enemyAction.Damage;
-                            TH.WriteL($"Both of your strikes clashed with such intense force, dealing the combined damage of each slash ({totalDamage}) to both you and the {currentEnemy.Name}!");
+                            TH.WriteL($"Both of your strikes clashed with such intense force, dealing the combined damage of each {TH.SetColor(Colors.Red)}slash{TH.SetColor()} ({totalDamage}) to both you and the {currentEnemy.Name}!");
+                            TH.WaitAndClear();
                             Player.TakeDamage(new CombatAction() { ActionType = eAction.Clash, Owner = currentEnemy, Damage = totalDamage, Name = "Clash" });
                             currentEnemy.TakeDamage(new CombatAction() { ActionType = eAction.Clash, Owner = Player, Damage = totalDamage, Name = "Clash" });
                             break;
                         case eAction.Counter:
-                            TH.WriteL($"As each opponent awaits an incoming attack, they fortify their defenses.");
+                            TH.WriteL($"As each opponent awaits an incoming attack, they {TH.SetColor(Colors.Green)}fortify{TH.SetColor()} their defenses.");
+                            TH.WaitAndClear();
+                            PrintHud();
                             Player.AddCounterArmor();
                             currentEnemy.AddCounterArmor();
+                            TH.WaitAndClear();
                             break;
                         case eAction.Spell:
-                            TH.WriteL($"The spells swirl together, creating an aura the buffs each opponent's next spell!");
+                            TH.WriteL($"The spells swirl together, creating an aura the buffs each opponent's next {TH.SetColor(Colors.Blue)}spell{TH.SetColor()}!");
+                            TH.WaitAndClear();
                             Player.GiveBuff(eCombatBuff.SpellDamage);
                             currentEnemy.GiveBuff(eCombatBuff.SpellDamage);
                             break;
                     }
                 }
             }
-
-            TH.WaitForEnter();
         }
 
         public static void HandleSingleAttack(CombatAction attack, Character otherCharacter)
@@ -367,25 +559,28 @@
             switch (attack.ActionType)
             {
                 case eAction.Strike:
-                    TH.WriteL($"While {otherCharacter.PerspectiveText("you", $"the {otherCharacter.Name}")} were unready, {attack.Owner.PerspectiveText("you", $"the {attack.Owner.Name}")} struck for {attack.PrintDamage()}.");
+                    TH.WriteL($"While {otherCharacter.PerspectiveText("you", $"the {otherCharacter.Name}")} were unready, {attack.Owner.PerspectiveText("you", $"the {attack.Owner.Name}")} {TH.SetColor(Colors.Red)}struck{TH.SetColor()} for{attack.PrintDamage()}.");
+                    TH.WaitAndClear();
                     otherCharacter.TakeDamage(attack);
                     break;
                 case eAction.Counter:
-                    TH.WriteL($"{attack.Owner.PerspectiveText("You", $"The {attack.Owner.Name}")} prepared for a strike that never came, fortifying {attack.Owner.PerspectiveText("your", $"their")} defense!");
+                    TH.WriteL($"{attack.Owner.PerspectiveText("You", $"The {attack.Owner.Name}")} prepared for a strike that never came, {TH.SetColor(Colors.Green)}fortifying{TH.SetColor()} {attack.Owner.PerspectiveText("your", $"their")} defense!");
+                    TH.WaitAndClear();
                     attack.Owner.AddCounterArmor();
                     break;
                 case eAction.Spell:
-                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} spell uninterupted, dealing {attack.PrintDamage()}!");
+                    TH.WriteL($"While {otherCharacter.PerspectiveText("you were", $"the {otherCharacter.Name} was")} busy, {attack.Owner.PerspectiveText("you were able to cast your", $"the {attack.Owner.Name} was able to cast their")} {TH.SetColor(Colors.Blue)}spell{TH.SetColor()} uninterupted, dealing {attack.PrintDamage()}!");
+                    TH.WaitAndClear();
                     otherCharacter.TakeDamage(attack);
                     break;
             }
 
             if (!otherCharacter.IsDead && otherCharacter is Enemy e && e.IsMerchant)
             {
-                TH.WriteL($"The {e.Name} looks at you with a dissapointed expression. They have lost trust in you as a buyer.");
+                TH.WriteL($"The {e.Name} looks at you with a dissapointed expression. {TH.SetColor(Colors.DarkGray)}They have lost trust in you as a buyer.{TH.SetColor()}");
                 TH.WaitForEnter();
                 PrintHud();
-                TH.WriteL("You are now an enemy.");
+                TH.WriteL($"You are now an {TH.SetColor(Colors.DarkRed)}enemy{TH.SetColor()}.");
                 e.IsMerchant = false;
             }
         }
@@ -414,7 +609,7 @@
                 }
             }
 
-            StatsTracker.RoomsVisited++;
+            StatsTracker.RoomVisited(CurrentRoom);
             TH.WriteL(CurrentRoom.RoomEnterText(prevRoom));
             TH.WaitForEnter();
         }
@@ -431,22 +626,34 @@
             Regenerate, // heal 1 hp for two turns            
         }
 
-        private static Player BuildPlayer(bool skipSetup = false)
+        private static void BuildPlayer(bool skipSetup = false)
         {
-            Player p = new Player() { Health = 6, IsPlayer = true, MaxHealth = 6, Name = "Test Player", Strength = 1, Dexterity = 1, Magic = 1, Actions = ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell]) };
+            Player = new Player() { Health = 6, IsPlayer = true, MaxHealth = 6, Name = "???", Strength = 1, Dexterity = 1, Magic = 1, Actions = ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell]) };
 
             if (skipSetup)
             {
-                return p;
+                for (int i = 0; i < 2; i++)
+                {
+                    PlayerSkillGain();
+                }
+                PrintHud();
+                return;
             }
 
-            p.Name = TH.PromptAndGetTextAnswer("Before we begin the game, what is your name?");
+            Player.Name = TH.PromptAndGetTextAnswer($"Before you step into the {TH.SetColor(Colors.DarkCyan)}portal{TH.SetColor()}, what is your name?");
             TH.Clear();
-            TH.WriteL($"Excellent, thank you for answering that {p.Name}");
-            TH.WaitForEnter();
-            TH.Clear();
+            TH.WriteL($"Excellent, thank you for answering that {Player.Name}.");
+            TH.WaitAndClear();
 
-            return p;
+            TH.WriteL($"Now, let's set up your character. You have 2 points to distribute between {TH.SetColor(Colors.Red)}Strength{TH.SetColor()}, {TH.SetColor(Colors.Green)}Dexterity{TH.SetColor()}, and {TH.SetColor(Colors.Blue)}Magic{TH.SetColor()}.");
+            TH.WaitAndClear();
+
+            for (int i = 0; i < 2; i++)
+            {
+                PlayerSkillGain();
+            }
+
+            PrintHud();
         }
     }
 
@@ -466,7 +673,29 @@
         public eAction WinAgainst { get; set; }
         public eAction LoseAgainst { get; set; }
 
-        public string Name { get; set; }
+        private string _Name;
+        public string Name
+        {
+            get
+            {
+                char color = Colors.Default;
+                switch (ActionType)
+                {
+                    case eAction.Strike:
+                        color = Colors.Red;
+                        break;
+                    case eAction.Counter:
+                        color = Colors.Green;
+                        break;
+                    case eAction.Spell:
+                        color = Colors.Blue;
+                        break;
+                }
+
+                return $"{TH.SetColor(color)}{_Name}{TH.SetColor()}";
+            }
+            set => _Name = value;
+        }
         public Character Owner { get; set; }
 
         private bool _IsBuffed = false;
@@ -492,14 +721,13 @@
                 LoseAgainst = LoseAgainst,
                 Name = Name,
                 Damage = Damage,
-
             };
         }
 
         public string PrintDamage()
         {
             int dmg = Damage;
-            return (dmg <= 0) ? "" : $"({dmg}{(_IsBuffed ? "*" : "")} dmg)";
+            return (dmg <= 0) ? "" : $" ({dmg}{(_IsBuffed ? "*" : "")} dmg)";
         }
 
         public int CalculateDamage()
@@ -510,15 +738,15 @@
             switch (ActionType)
             {
                 case eAction.Spell:
-                    damage += (Owner.Magic / 2) + 1;
+                    damage += Owner.Magic;
                     damage += Owner.CombatBuffs.Where(b => b == eCombatBuff.SpellDamage).Count();
                     _IsBuffed = (damage > Owner.Magic);
                     break;
                 case eAction.Strike:
-                    damage += (Owner.Strength / 2) + 1;
+                    damage += Owner.Strength;
                     break;
                 case eAction.Counter:
-                    damage += (Owner.Dexterity / 2) + 1;
+                    damage += Owner.Dexterity;
                     break;
             }
 
@@ -530,11 +758,11 @@
             switch (ActionType)
             {
                 case eAction.Spell:
-                    return "M";
+                    return $"{TH.SetColor(Colors.Blue)}M{TH.SetColor()}";
                 case eAction.Strike:
-                    return "S";
+                    return $"{TH.SetColor(Colors.Red)}S{TH.SetColor()}";
                 case eAction.Counter:
-                    return "D";
+                    return $"{TH.SetColor(Colors.Green)}D{TH.SetColor()}";
             }
 
             return "";
@@ -542,9 +770,12 @@
 
         public void ResolveBuffs()
         {
-            if (ActionType == eAction.Spell && Owner.CombatBuffs.Contains(eCombatBuff.SpellDamage))
+            if (ActionType == eAction.Spell)
             {
-                Owner.RemoveBuff(eCombatBuff.SpellDamage);
+                while (Owner.CombatBuffs.Contains(eCombatBuff.SpellDamage))
+                {
+                    Owner.RemoveBuff(eCombatBuff.SpellDamage);
+                }
             }
         }
     }
@@ -564,7 +795,13 @@
     public class Room
     {
         public eRoom eRoom { get; set; }
-        public string Name { get; set; }
+
+        private string _Name;
+        public string Name
+        {
+            get { return $"{TH.SetColor(Colors.DarkCyan)}{_Name}{TH.SetColor()}"; }
+            set { _Name = value; }
+        }
         public List<ItemUsable> Items { get; set; } = new();
         public Enemy Enemy { get; set; } = null;
         public int Gold { get; set; } = 0;
@@ -615,12 +852,12 @@
         {
             bool isFirstRoom = prevRoom == null;
             string[] firstRoom = [$"You start your journey entering the portal for the first time. After stepping through it, you are now in a {Name}.", $"With a deep breath, you step through the portal. Suddenly you appear in a {Name}."];
-            string[] travelText = (isFirstRoom) ? [] : [$"You enter the portal, leaving the {prevRoom.Name} and have now entered what appears to be a {Name}.", 
+            string[] travelText = (isFirstRoom) ? [] : [$"You enter the portal, leaving the {prevRoom.Name} and have now entered what appears to be a {Name}.",
                 $"Looking around the {prevRoom.Name} one last time, you step into the portal and are now in a {Name}.",
                 $"Ready to leave the {prevRoom.Name}, you quickly enter the portal to land in a {Name}.",
                 $"Without hesitation, you jump into the portal. After a flash of light you find yourself in a {Name}."
                 ];
-            string[] merchantText = (Enemy == null || !Enemy.IsMerchant) ? [] : [$" In it, there is a single merchant {(Enemy.UsableItems.Count > 0 ? "with some items for sale." : "who sadly has no items for sale. What kind of store is this?")}"];
+            string[] merchantText = (Enemy == null || !Enemy.IsMerchant) ? [] : [$" In it, there is a single {Enemy.Name} {(Enemy.UsableItems.Count > 0 ? "with some items for sale." : "who sadly has no items for sale. What kind of store is this?")}"];
             string[] enemyText = (Enemy == null || Enemy.IsMerchant) ? [] : [$" In it, there is a single {Enemy.Name} infront of a portal, sizing you up, ready to fight.", $" Quickly you notice a {Enemy.Name} staring at you. They want to fight.", $" Instantly you make eye contact with the {Enemy.Name} blocking you from escape. You can sense their aggression.", $" The {Enemy.Name} in the room is pacing back and forth, as if they've been waiting to fight."];
             string[] emptyText = [$" Thankfully there's nobody else in the {Name}, just the lit portal across the way.", $" Luckily you realize you're alone.", $" Fortunately, there's no enemies, granting you a bit of respite."];
 
@@ -630,33 +867,37 @@
         }
     }
 
-    public enum eRoom { Empty, DarkAlleyway, DimlyLitCellar, ForestClearing, MushroomDwelling, CastleThroneRoom, Shop}
+    public enum eRoom { Empty, DarkAlleyway, DimlyLitCellar, ForestClearing, MushroomDwelling, CastleThroneRoom, Shop }
     public static class RoomFactory
     {
-        private static UsableItemSpawn[] StandardRoomDrops = [new(eUsableItem.SmallHealthPotion, 40), new(eUsableItem.SmallHealthPotion, 20), 
-                                                              new(eUsableItem.MediumHealthPotion, 10), new(eUsableItem.MediumHealthPotion, 5), 
-                                                              new(eUsableItem.ArmorShard,30), new(eUsableItem.ArmorShard,5),
-                                                              new(eUsableItem.BanishmentSpellScroll, 5), new(eUsableItem.ShopPortal, 10)];
+        private static UsableItemSpawn[] StandardRoomDrops = [new(eUsableItem.SmallHealthPotion, 40),
+            new(eUsableItem.SmallHealthPotion, 20),
+            new(eUsableItem.MediumHealthPotion, 10),
+            new(eUsableItem.MediumHealthPotion, 5),
+            new(eUsableItem.ArmorShard, 30),
+            new(eUsableItem.ArmorShard, 5),
+            new(eUsableItem.BanishmentSpellScroll, 5),
+            new(eUsableItem.ShopPortal, 10)];
 
         static Room[] Rooms { get; set; } = [
             new(name: "Dark Alleyway",
                 possibleItems: StandardRoomDrops,
-                possibleEnemies: [new(eEnemy.Skeleton,10), new(eEnemy.Goblin, 90)]),
+                possibleEnemies: [new(eEnemy.Skeleton, 10), new(eEnemy.Goblin, 100)]),
             new(name: "Dimly Lit Cellar",
                 possibleItems: StandardRoomDrops,
-                possibleEnemies: [new(eEnemy.Wolf,30), new(eEnemy.Goblin,90)]),
+                possibleEnemies: [new(eEnemy.Wolf, 30), new(eEnemy.Goblin, 90)]),
             new(name: "Forest Clearing",
                 possibleItems: StandardRoomDrops,
-                possibleEnemies: [new(eEnemy.Goblin, 10), new(eEnemy.MushroomKnight, 30), new(eEnemy.Wolf,80)]),
+                possibleEnemies: [new(eEnemy.Goblin, 10), new(eEnemy.MushroomKnight, 30), new(eEnemy.Wolf, 80)]),
             new(name: "Mushroom Dwelling",
                 possibleItems: StandardRoomDrops,
                 possibleEnemies: [new(eEnemy.MushroomKnight, 90)]),
             new(name: "Castle Throne Room",
                 possibleItems: [new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30), new(eUsableItem.SmallHealthPotion, 30)],
-                possibleEnemies: [new (eEnemy.PossessedSoldier, 40), new(eEnemy.MushroomKnight, 70)]),
+                possibleEnemies: [new(eEnemy.PossessedSoldier, 40), new(eEnemy.MushroomKnight, 70)]),
             new(name: "Shop", room: eRoom.Shop,
-                possibleEnemies:[new (eEnemy.Merchant, 100)],
-                possibleItems: [new(eUsableItem.BanishmentSpellScroll,10), new(eUsableItem.MediumHealthPotion,90), new(eUsableItem.ArmorShard,95), new(eUsableItem.ShopPortal,100)])
+                possibleEnemies: [new(eEnemy.Merchant, 100)],
+                possibleItems: [new(eUsableItem.BanishmentSpellScroll, 10), new(eUsableItem.MediumHealthPotion, 90), new(eUsableItem.ArmorShard, 95), new(eUsableItem.ShopPortal, 100)])
         ];
 
         public static Room GetRandomRoom() => Helper.GetRandomItemFromArray(Rooms).BuildRoom();
@@ -667,7 +908,16 @@
     //Character
     public abstract class Character
     {
-        public string Name { get; set; }
+        public string _Name;
+        public string Name
+        {
+            get
+            {
+                char color = (IsPlayer) ? Colors.Green : (IsMerchant) ? Colors.Green : Colors.DarkRed;
+                return (IsDead) ? $"{TH.SetColor(Colors.DarkGray)}{_Name}{TH.SetColor()}" : $"{TH.SetColor(color)}{_Name}{TH.SetColor()}";
+            }
+            set => _Name = value;
+        }
         public int MaxHealth { get; set; }
         public int Health { get; set; }
         public int Armor { get; set; } = 0;
@@ -679,6 +929,7 @@
 
         public bool IsDead { get; set; } = false;
         public bool IsPlayer { get; set; } = false;
+        public bool IsMerchant { get; set; }
         public bool IsBanished { get; set; } = false;
         public Dictionary<eUsableItem, List<ItemUsable>> UsableItems { get; private set; } = new() { };
 
@@ -792,10 +1043,13 @@
 
             Health -= dmg;
             enemyAttack.ResolveBuffs();
+            Game.PrintHud();
 
             if (Health <= 0)
             {
                 TH.WriteL($"{PerspectiveText($"You die", $"The {Name} was killed")} as a result!");
+                TH.WaitForEnter();
+                TH.Clear();
                 IsDead = true;
                 Death(enemyAttack.Owner);
                 return;
@@ -814,7 +1068,7 @@
 
             for (int i = 0; i < Health; i++)
             {
-                healthBar += "(♥)";
+                healthBar += $"({TH.SetColor(Colors.Red)}♥{TH.SetColor()})";
             }
 
             for (int i = 0; i < remainder; i++)
@@ -822,7 +1076,7 @@
                 healthBar += "( )";
             }
 
-            return (Health > 0) ? $"{healthBar}{PrintArmor()}" : "Dead";
+            return (Health > 0) ? $"{healthBar}{PrintArmor()}" : $"{TH.SetColor(Colors.DarkGray)}Dead{TH.SetColor()}";
         }
 
         public string PrintArmor()
@@ -830,7 +1084,7 @@
             string armor = "";
             for (int i = 0; i < Armor; i++)
             {
-                armor += "[+]";
+                armor += $"[{TH.SetColor(Colors.Cyan)}+{TH.SetColor()}]";
             }
 
             return armor;
@@ -851,7 +1105,7 @@
                     switch (b)
                     {
                         case eCombatBuff.SpellDamage:
-                            r = "$";
+                            r = $"{TH.SetColor(Colors.Blue)}${TH.SetColor()}";
                             break;
                     }
 
@@ -859,7 +1113,7 @@
                 }
             }
 
-            return String.IsNullOrEmpty(buffs) ? "None" : buffs;
+            return String.IsNullOrEmpty(buffs) ? $"{TH.SetColor(Colors.DarkGray)}None{TH.SetColor()}" : buffs;
         }
 
         public string[] GetItemsAsChoice(out eUsableItem[] itemsToChooseFrom)
@@ -880,6 +1134,10 @@
         {
             TH.WriteL($"Suddenly the sky tears open above {PerspectiveText("you", $"the {Name}")} and, in a flash, dozens of arms reach out and grab {PerspectiveText("you, forcibly banishing you", "them, foricbly banishing them")} to the void. The tear seals as quickly as it appeared.");
             IsBanished = true;
+            if (!IsPlayer)
+            {
+                StatsTracker.EnemySentToVoid(this as Enemy);
+            }
         }
 
         public virtual void Death(Character otherChar) { }
@@ -889,6 +1147,8 @@
             int stealChance = 20 + ((Dexterity - otherChar.Dexterity) * 5);
             return stealChance < 0 ? 0 : stealChance > 100 ? 100 : stealChance;
         }
+
+        public string PrintStats() => $"S/D/M: {TH.SetColor(IsDead ? Colors.DarkGray : Colors.Red)}{Strength}{TH.SetColor()}/{TH.SetColor(IsDead ? Colors.DarkGray : Colors.Green)}{Dexterity}{TH.SetColor()}/{TH.SetColor(IsDead ? Colors.DarkGray : Colors.Blue)}{Magic}{TH.SetColor()}";
     }
 
     //Player
@@ -906,7 +1166,7 @@
 
             foreach (CombatAction a in Actions)
             {
-                choices.Add($"{a.Name}{(a.Damage > 0 ? "* " + a.PrintDamage() : "")}");
+                choices.Add($"{a.Name}{a.PrintDamage()}");
             }
 
             return choices.ToArray();
@@ -922,9 +1182,11 @@
                 return false;
             }
 
-            string[] mr = ["smiles briefly as you grab the item before looking back down at their book.", "utters a brief noise of what you percieve to be gratitude.",
-            "grabs your gold nonchalantly and nods as their attention doesn't leave the book they're invested in.", "glances up at you, \"Thanks, traveler.\"",
-            "stares at you blankly as you take the item. Is this... their way of trying to sell you on another item to buy?"];
+            string[] mr = [$"smiles briefly as you grab the {boughtItem.Name} before looking back down at their book.",
+                "utters a brief noise of what you percieve to be gratitude.",
+                "grabs your gold nonchalantly and nods as their attention doesn't leave the book they're invested in.",
+                "glances up at you, \"Thanks, traveler.\"",
+                $"stares at you blankly as you take the {boughtItem.Name}. Is this... their way of trying to sell you on another item to buy?"];
 
             merchant.RemoveItem(boughtItem);
             GiveUsableItem(boughtItem);
@@ -932,25 +1194,9 @@
             merchant.Gold += boughtItem.BuyPrice;
             Gold -= boughtItem.BuyPrice;
 
-            TH.WriteL($"You purchased the {boughtItem.Name} for {boughtItem.BuyPrice} gold. The {merchant.Name} {Helper.GetRandomItemFromArray(mr)}");
+            TH.WriteL($"You purchased the {boughtItem.Name} for {TH.SetColor(Colors.Yellow)}{boughtItem.BuyPrice} gold{TH.SetColor()}. The {merchant.Name} {Helper.GetRandomItemFromArray(mr)}");
 
             return true;
-        }
-
-        public void PromptSkillGain()
-        {
-            TH.Menu("Which stat would you like to increase by 1?", ["Strength", "Dexterity", "Magic"], out int c);
-            switch (c)
-            {
-                case 0:
-                    Strength++;
-                    TH.Write("You feel stronger.");
-                    break;
-                case 1:
-                    break;
-                case 2:
-                    break;
-            }
         }
     }
 
@@ -961,7 +1207,6 @@
         private UsableItemSpawn[] PossibleItems { get; set; } = [];
         private int PossibleGold { get; set; }
         public int EvasionChance { get; set; }
-        public bool IsMerchant { get; set; }
         public string Intent { get; set; }
         public bool ExhaustedSearch { get; set; }
 
@@ -989,7 +1234,7 @@
             Enemy e = new Enemy()
             {
                 eEnemy = eEnemy,
-                Name = Name,
+                Name = _Name,
                 Health = Health,
                 MaxHealth = MaxHealth,
                 Actions = Actions,
@@ -1009,11 +1254,21 @@
 
         public override void Death(Character otherChar)
         {
-            StatsTracker.MonstersKilled++;
+
+            StatsTracker.EnemyDefeated(this);
             if (otherChar != null && !otherChar.IsDead && Gold > 0)
             {
-                TH.WriteL($"The {Name} drops a gold pouch. You grab it and take the {Gold} gold in it.");
+                Game.PrintHud();
+                TH.WriteL($"The {Name} drops a {TH.SetColor(Colors.Yellow)}gold pouch{TH.SetColor()}. You grab it and take the {TH.SetColor(Colors.Yellow)}{Gold} gold{TH.SetColor()} in it.");
+                TH.WaitForEnter();
+                TH.Clear();
+                StatsTracker.TotalGoldEarned += Gold;
                 otherChar.Gold += Gold;
+            }
+
+            if (otherChar is Player p && StatsTracker.Victims.Count % 5 == 0)
+            {
+                GameEvents.RaisePlayerSkillGain();
             }
         }
 
@@ -1066,7 +1321,7 @@
 
             foreach (KeyValuePair<eUsableItem, List<ItemUsable>> kvp in UsableItems)
             {
-                choices.Add($"({kvp.Value[0].BuyPrice}g) {kvp.Value[0].Name} [x{kvp.Value.Count}] - {kvp.Value[0].Description}");
+                choices.Add($"({TH.SetColor(Colors.Yellow)}{kvp.Value[0].BuyPrice}g{TH.SetColor()}) {kvp.Value[0].Name} [x{kvp.Value.Count}] - {kvp.Value[0].Description}");
                 itemChoices.Add(kvp.Key);
             }
 
@@ -1076,7 +1331,7 @@
 
         public string PrintIntent(bool canSeeIntent)
         {
-            return  (IsDead || IsMerchant) ? "" : $"| Intent: [{(canSeeIntent ? Intent : "?")}]";
+            return (IsDead || IsMerchant) ? "" : $"| Intent: [{(canSeeIntent ? Intent : "?")}]";
         }
     }
 
@@ -1084,7 +1339,7 @@
     public static class EnemyFactory
     {
         static List<Enemy> Enemies = new() {
-            new(eEnemy.Goblin, name: "Goblin", health: 3, possibleGold: 15, evasionChance: 40,
+            new(eEnemy.Goblin, name: "Goblin", health: 3, possibleGold: 15, evasionChance: 40, strength: 1, dexterity: 1, magic: 1,
                 possibleItems: [new(eUsableItem.SmallHealthPotion,70)],
                 actions: ActionsFactory.CreateActions([eAction.Strike, eAction.Counter, eAction.Spell])),
             new(eEnemy.Wolf, name: "Wolf", health: 4, possibleGold: 30, evasionChance: 25, strength: 2,
@@ -1162,9 +1417,28 @@
 
         public ItemUsable CreateCopy()
         {
+            char c = Colors.Default;
+            switch (UsableItem)
+            {
+                case eUsableItem.SmallHealthPotion:
+                case eUsableItem.MediumHealthPotion:
+                    c = Colors.DarkGreen;
+                    break;
+                case eUsableItem.ArmorShard:
+                    c = Colors.Cyan;
+                    break;
+                case eUsableItem.IntentPotion:
+                    c = Colors.Blue;
+                    break;
+                case eUsableItem.BanishmentSpellScroll:
+                case eUsableItem.ShopPortal:
+                    c = Colors.DarkMagenta;
+                    break;
+            }
+
             return new ItemUsable()
             {
-                Name = Name,
+                Name = $"{TH.SetColor(c)}{Name}{TH.SetColor()}",
                 Description = Description,
                 ItemType = ItemType,
                 UsableItem = UsableItem,
@@ -1192,6 +1466,12 @@
                 return false;
             }
 
+            if (UsableItem == eUsableItem.BanishmentSpellScroll && (Game.CurrentRoom.Enemy == null || Game.CurrentRoom.Enemy.IsDead || Game.CurrentRoom.Enemy.IsMerchant))
+            {
+                TH.WriteL("It'd be a waste to use this item now.");
+                return false;
+            }
+
             TH.WriteL($"{c.PerspectiveText("You", $"The {c.Name}")} used a {Name}.");
 
             switch (UsableItem)
@@ -1209,6 +1489,10 @@
                     t.Banish();
                     break;
                 case eUsableItem.IntentPotion:
+                    if (Game.CurrentRoom.Enemy == null || Game.CurrentRoom.Enemy.IsDead)
+                    {
+                        TH.WriteL("It'd be a waste to use this item now.");
+                    }
                     if (t is Player p)
                     {
                         p.SeesIntent = true;
@@ -1241,10 +1525,18 @@
         public static eUsableItem[] HealingItems = [eUsableItem.SmallHealthPotion, eUsableItem.MediumHealthPotion];
 
         public static UsableItemSpawn[] PossibleMerchantItems = [
-            new(eUsableItem.BanishmentSpellScroll, 5), new(eUsableItem.ShopPortal,15),
-            new(eUsableItem.MediumHealthPotion, 50),new(eUsableItem.MediumHealthPotion, 50),new(eUsableItem.MediumHealthPotion, 50),
-            new(eUsableItem.ArmorShard, 50), new(eUsableItem.ArmorShard,50), new(eUsableItem.ArmorShard,50),
-            new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80),new(eUsableItem.SmallHealthPotion, 80)
+            new(eUsableItem.BanishmentSpellScroll, 5),
+            new(eUsableItem.ShopPortal, 15),
+            new(eUsableItem.MediumHealthPotion, 50),
+            new(eUsableItem.MediumHealthPotion, 50),
+            new(eUsableItem.MediumHealthPotion, 50),
+            new(eUsableItem.ArmorShard, 50),
+            new(eUsableItem.ArmorShard, 50),
+            new(eUsableItem.ArmorShard, 50),
+            new(eUsableItem.SmallHealthPotion, 80),
+            new(eUsableItem.SmallHealthPotion, 80),
+            new(eUsableItem.SmallHealthPotion, 80),
+            new(eUsableItem.SmallHealthPotion, 80)
         ];
 
         static List<ItemUsable> UsableItems = new List<ItemUsable>() {
@@ -1295,34 +1587,85 @@
         }
     }
 
-    //Text Handler
-    public class TH
+    public static class Colors
     {
+        public static char Black = '0';
+        public static char Blue = '1';
+        public static char Cyan = '2';
+        public static char DarkBlue = '3';
+        public static char DarkCyan = '4';
+        public static char DarkGray = '5';
+        public static char DarkGreen = '6';
+        public static char DarkMagenta = '7';
+        public static char DarkRed = '8';
+        public static char DarkYellow = '9';
+        public static char Gray = 'a';
+        public static char Green = 'b';
+        public static char Magenta = 'c';
+        public static char Red = 'd';
+        public static char White = 'e';
+        public static char Yellow = 'f';
+        public static char Default = 'g';
+    }
+
+    //Text Handler
+    public static class TH
+    {
+        public static Dictionary<char, ConsoleColor> ConsoleColors { get; set; } = new() {
+            {Colors.Black, ConsoleColor.Black},
+            {Colors.Blue, ConsoleColor.Blue},
+            {Colors.Cyan, ConsoleColor.Cyan},
+            {Colors.DarkBlue, ConsoleColor.DarkBlue},
+            {Colors.DarkCyan, ConsoleColor.DarkCyan},
+            {Colors.DarkGray, ConsoleColor.DarkGray},
+            {Colors.DarkGreen, ConsoleColor.DarkGreen},
+            {Colors.DarkMagenta, ConsoleColor.DarkMagenta},
+            {Colors.DarkRed, ConsoleColor.DarkRed},
+            {Colors.DarkYellow, ConsoleColor.DarkYellow},
+            {Colors.Gray, ConsoleColor.Gray},
+            {Colors.Green, ConsoleColor.Green},
+            {Colors.Magenta, ConsoleColor.Magenta},
+            {Colors.Red, ConsoleColor.Red},
+            {Colors.White, ConsoleColor.White},
+            {Colors.Yellow, ConsoleColor.Yellow}
+        };
+
+        public static string SetColor(char color = 'g')
+        {
+            return "`" + color;
+        }
+
+        public static string CT(char color, string text)
+        {
+            return $"{SetColor(color)}{text}{SetColor()}";
+        }
+
         private static List<ConsoleKey> NumberKeys = new() { ConsoleKey.D1, ConsoleKey.D2, ConsoleKey.D3, ConsoleKey.D4, ConsoleKey.D5, ConsoleKey.D6, ConsoleKey.D7, ConsoleKey.D8, ConsoleKey.D9, ConsoleKey.D0 };
-        
+
         public static string PromptAndGetTextAnswer(string question)
         {
             WriteL($"{question}");
             Write(">");
-
             return Console.ReadLine();
         }
 
-        public static bool Menu(string question, string[] choices, out int choice, bool includeCancel = true)
+        public static bool Menu(string question, string[] choices, out int choice, bool includeCancel = true, bool indent = false)
         {
             bool choiceMade = false;
+            string ind = (indent) ? "\t\t" : "";
             Console.CursorVisible = false;
-            WriteL(question,true);
+            WriteL(ind + question, true);
             int check = (includeCancel) ? choices.Length : choices.Length - 1;
+
 
             for (int i = 0; i < choices.Length; i++)
             {
-                WriteL($"{i + 1}. {choices[i]}",true);
+                WriteL($"{ind}{i + 1}. {choices[i]}", true);
             }
 
             if (includeCancel)
             {
-                WriteL($"{choices.Length + 1}. Cancel",true);
+                WriteL($"{ind}{choices.Length + 1}. Cancel", true);
             }
 
             do
@@ -1369,15 +1712,43 @@
 
         public static void Write(string text, bool instantText = false)
         {
+            bool lookForColor = false;
+
             foreach (var letter in text)
             {
-                Console.Write(letter);
-                if (!instantText) Thread.Sleep(5);
+                if (letter == '`')
+                {
+                    lookForColor = true;
+                }
+                else if (lookForColor)
+                {
+                    if (ConsoleColors.ContainsKey(letter))
+                    {
+                        Console.ForegroundColor = ConsoleColors[letter];
+                    }
+                    else
+                    {
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+
+                    lookForColor = false;
+                }
+                else
+                {
+                    Console.Write(letter);
+                    if (!instantText) Thread.Sleep(5);
+                }
+            }
+
+            if (lookForColor)
+            {
+                Console.ForegroundColor = ConsoleColor.White;
             }
         }
 
         public static void WriteL(string text, bool instantText = false)
         {
+
             Write(text, instantText);
 
             Console.WriteLine();
@@ -1387,13 +1758,19 @@
             }
         }
 
-        public static void WaitForEnter()
+        public static void WaitAndClear(string text = "[Press Enter To Continue]")
+        {
+            WaitForEnter(text);
+            Clear();
+        }
+
+        public static void WaitForEnter(string text = "[Press Enter To Continue]")
         {
             bool enterPressed = false;
 
             Console.ForegroundColor = ConsoleColor.Black; Console.BackgroundColor = ConsoleColor.White;
 
-            Write("[Press Enter To Continue]", true);
+            Write($"{text}", true);
             Console.CursorVisible = false;
             Console.ResetColor();
 
@@ -1430,22 +1807,87 @@
     public static class StatsTracker
     {
         public static int Turns { get; set; }
-        public static int RoomsVisited { get; set; }
-        public static int MonstersKilled { get; set; }
         public static int TotalGoldEarned { get; set; }
-        public static int TotalMonstersBanished { get; set; }
+        public static Dictionary<Enemy, int> Victims { get; } = new();
+        public static Dictionary<Enemy, int> InTheVoid { get; } = new();
+        public static Dictionary<Room, int> RoomsVisited { get; } = new();
 
         public static void Reset()
         {
             Turns = 0;
-            RoomsVisited = 0;
-            MonstersKilled = 0;
+            RoomsVisited.Clear();
             TotalGoldEarned = 0;
+            Victims.Clear();
+            InTheVoid.Clear();
+        }
+
+        public static void EnemyDefeated(Enemy e) => AddEnemyToDictionary(e, Victims);
+        public static void EnemySentToVoid(Enemy e) => AddEnemyToDictionary(e, InTheVoid);
+
+        public static void AddEnemyToDictionary(Enemy e, Dictionary<Enemy, int> d)
+        {
+            bool exists = false;
+            foreach (Enemy k in d.Keys)
+            {
+                if (k.eEnemy == e.eEnemy)
+                {
+                    d[k]++;
+                    exists = true;
+                }
+            }
+
+            if (!exists)
+            {
+                d.Add(e, 1);
+            }
+        }
+
+        public static void RoomVisited(Room r) => AddRoomToDictionary(r, RoomsVisited);
+        public static void AddRoomToDictionary(Room r, Dictionary<Room, int> d)
+        {
+            bool exists = false;
+            foreach (Room k in d.Keys)
+            {
+                if (k.Name == r.Name)
+                {
+                    d[k]++;
+                    exists = true;
+                }
+            }
+
+            if (!exists)
+            {
+                d.Add(r, 1);
+            }
+        }
+
+        public static string PrintEnemyList(Dictionary<Enemy, int> d)
+        {
+            string list = (d.Count > 0) ? "\n" : "";
+
+            foreach (Enemy e in d.Keys)
+            {
+                list += $" - {e.Name} (x{d[e]})\n";
+            }
+
+            return list;
+        }
+
+        public static string PrintRoomsList(Dictionary<Room, int> d)
+        {
+            string list = (d.Count > 0) ? "\n" : "";
+
+            foreach (Room r in d.Keys)
+            {
+                list += $" - {r.Name} (x{d[r]})\n";
+            }
+
+            return list;
         }
 
         public static void PrintFinalStats()
         {
-            TH.WriteL($"Final Stats:\n- Total Turns: {Turns}\n- Rooms Visited: {RoomsVisited}\n- Enemies Slain: {MonstersKilled}\n- Enemies Sent to the Void: {TotalMonstersBanished}\n- Total Gold Earned: {TotalGoldEarned}");
+            TH.WriteL($"Final Stats:\n- Total Turns: {Turns}\n- Rooms Visited: {RoomsVisited.Count}{PrintRoomsList(RoomsVisited)}\n- Enemies Slain: {Victims.Count}{PrintEnemyList(Victims)}\n- Enemies Sent to the Void: {InTheVoid.Count}{PrintEnemyList(InTheVoid)}\n- Total Gold Earned: {TH.SetColor(Colors.Yellow)}{TotalGoldEarned}g{TH.SetColor()}");
         }
     }
 }

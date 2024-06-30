@@ -25,3 +25,7 @@
 /g/obj/Debug/net8.0/g.genruntimeconfig.cache
 /g/obj/Debug/net8.0/g.pdb
 *.json
+/g/obj
+/.vs
+/g/bin
+/.vs
